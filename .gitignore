@@ -1,0 +1,13 @@
+.agents/
+.codex/
+node_modules/
+tools/
+*.msi
+*.zip
+gh-install.log
+gh-auth*.txt
+gh-device-auth.json
+gh-repo*.txt
+*.log
+.DS_Store
+Thumbs.db
