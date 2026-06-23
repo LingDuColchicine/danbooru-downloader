@@ -81,3 +81,28 @@ The script writes a small normalized sample here:
 ```text
 sample-normalized-posts.json
 ```
+
+## Minimal Web Test
+
+Run the local web tester:
+
+```powershell
+cd .\danbooru-api-probe
+node .\web-test\server.mjs
+```
+
+Then open:
+
+```text
+http://127.0.0.1:5174/
+```
+
+The page has a tag input, limit/page inputs, a search button, and raw JSON output.
+
+The local server proxies `/api/posts` to Danbooru's `posts.json` API. If normal DNS resolution points to an unreachable address, it falls back to known Cloudflare IPs while preserving the correct `Host` and TLS SNI for `danbooru.donmai.us`.
+
+Detailed flow and handoff notes are in:
+
+```text
+web-test/FLOW.md
+```

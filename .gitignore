@@ -8,6 +8,7 @@ gh-install.log
 gh-auth*.txt
 gh-device-auth.json
 gh-repo*.txt
+web-test-server.pid.txt
 *.log
 .DS_Store
 Thumbs.db

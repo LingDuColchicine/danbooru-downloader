@@ -1,0 +1,50 @@
+body {
+  color: #111;
+  font-family: Arial, sans-serif;
+  line-height: 1.4;
+  margin: 0;
+}
+
+main {
+  margin: 24px;
+  max-width: 1200px;
+}
+
+form {
+  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+label {
+  display: grid;
+  font-size: 14px;
+  gap: 4px;
+}
+
+input {
+  border: 1px solid #aaa;
+  font: inherit;
+  padding: 6px 8px;
+}
+
+#tags {
+  min-width: 360px;
+}
+
+button {
+  cursor: pointer;
+  font: inherit;
+  padding: 7px 12px;
+}
+
+pre {
+  background: #f4f4f4;
+  border: 1px solid #ddd;
+  overflow: auto;
+  padding: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

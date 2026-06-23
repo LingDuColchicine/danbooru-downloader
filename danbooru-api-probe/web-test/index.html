@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Danbooru API Web Test</title>
+    <link rel="stylesheet" href="./style.css">
+  </head>
+  <body>
+    <main>
+      <h1>Danbooru API Web Test</h1>
+
+      <form id="search-form">
+        <label>
+          Tags
+          <input id="tags" name="tags" value="rating:safe" autocomplete="off">
+        </label>
+        <label>
+          Limit
+          <input id="limit" name="limit" type="number" min="1" max="50" value="5">
+        </label>
+        <label>
+          Page
+          <input id="page" name="page" type="number" min="1" value="1">
+        </label>
+        <button type="submit">Search</button>
+      </form>
+
+      <section>
+        <h2>Status</h2>
+        <pre id="status">Ready.</pre>
+      </section>
+
+      <section>
+        <h2>Results</h2>
+        <div id="summary"></div>
+        <pre id="results"></pre>
+      </section>
+    </main>
+
+    <script src="./main.js"></script>
+  </body>
+</html>
