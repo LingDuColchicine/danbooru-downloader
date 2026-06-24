@@ -3,40 +3,47 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Danbooru API Web Test</title>
+    <title>Danbooru Downloader</title>
     <link rel="stylesheet" href="./style.css">
   </head>
   <body>
-    <main>
-      <h1>Danbooru API Web Test</h1>
+    <div class="app-shell">
+      <aside class="side-menu" aria-label="Primary navigation">
+        <div class="menu-brand">
+          <div class="menu-title" aria-label="Menu">
+            <span class="nav-icon icon-menu" aria-hidden="true"></span>
+            <span data-i18n="nav.menu">Menu</span>
+          </div>
+        </div>
 
-      <form id="search-form">
-        <label>
-          Tags
-          <input id="tags" name="tags" value="rating:safe" autocomplete="off">
-        </label>
-        <label>
-          Limit
-          <input id="limit" name="limit" type="number" min="1" max="50" value="5">
-        </label>
-        <label>
-          Page
-          <input id="page" name="page" type="number" min="1" value="1">
-        </label>
-        <button type="submit">Search</button>
-      </form>
+        <nav class="nav-list" aria-label="Main sections">
+          <button class="nav-button active" type="button" data-page="search" aria-label="Search">
+            <span class="nav-icon icon-search" aria-hidden="true"></span>
+            <span data-i18n="nav.search">Search</span>
+          </button>
+          <button class="nav-button" type="button" data-page="favorites" aria-label="Favorites">
+            <span class="nav-icon icon-heart" aria-hidden="true"></span>
+            <span data-i18n="nav.favorites">Favorites</span>
+          </button>
+          <button class="nav-button" type="button" data-page="settings" aria-label="Settings">
+            <span class="nav-icon icon-settings" aria-hidden="true"></span>
+            <span data-i18n="nav.settings">Settings</span>
+          </button>
+        </nav>
+      </aside>
 
-      <section>
-        <h2>Status</h2>
-        <pre id="status">Ready.</pre>
-      </section>
-
-      <section>
-        <h2>Results</h2>
-        <div id="summary"></div>
-        <pre id="results"></pre>
-      </section>
-    </main>
+      <main class="page-content" aria-live="polite">
+        <section class="page-panel active" data-page-panel="search">
+          <span>1</span>
+        </section>
+        <section class="page-panel" data-page-panel="favorites">
+          <span>2</span>
+        </section>
+        <section class="page-panel" data-page-panel="settings">
+          <span>3</span>
+        </section>
+      </main>
+    </div>
 
     <script src="./main.js"></script>
   </body>

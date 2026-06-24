@@ -1,78 +1,45 @@
-const form = document.querySelector("#search-form");
-const statusEl = document.querySelector("#status");
-const summaryEl = document.querySelector("#summary");
-const resultsEl = document.querySelector("#results");
+const navButtons = [...document.querySelectorAll("[data-page]")];
+const pagePanels = [...document.querySelectorAll("[data-page-panel]")];
+const i18nNodes = [...document.querySelectorAll("[data-i18n]")];
 
-function summarizePost(post) {
-  return {
-    id: post.id,
-    rating: post.rating,
-    score: post.score,
-    size: `${post.image_width}x${post.image_height}`,
-    file_ext: post.file_ext,
-    file_size: post.file_size,
-    preview_file_url: post.preview_file_url,
-    large_file_url: post.large_file_url,
-    file_url: post.file_url,
-    source: post.source,
-    artist: post.tag_string_artist,
-    character: post.tag_string_character,
-    copyright: post.tag_string_copyright,
-    tags: post.tag_string,
-  };
-}
-
-async function runSearch() {
-  const formData = new FormData(form);
-  const params = new URLSearchParams({
-    tags: formData.get("tags") || "",
-    limit: formData.get("limit") || "5",
-    page: formData.get("page") || "1",
+function showPage(pageName) {
+  navButtons.forEach((button) => {
+    const isActive = button.dataset.page === pageName;
+    button.classList.toggle("active", isActive);
+    button.setAttribute("aria-current", isActive ? "page" : "false");
   });
 
-  const localUrl = `/api/posts?${params}`;
-  statusEl.textContent = `Loading ${localUrl}`;
-  summaryEl.innerHTML = "";
-  resultsEl.textContent = "";
+  pagePanels.forEach((panel) => {
+    panel.classList.toggle("active", panel.dataset.pagePanel === pageName);
+  });
+}
 
+function getNestedValue(source, path) {
+  return path.split(".").reduce((value, key) => value?.[key], source);
+}
+
+async function loadLanguage() {
   try {
-    const response = await fetch(localUrl);
-    const payload = await response.json();
-    const posts = Array.isArray(payload.body) ? payload.body : [];
+    const response = await fetch("./lang/en.json");
+    const dictionary = await response.json();
 
-    statusEl.textContent = [
-      `Local HTTP: ${response.status}`,
-      `Danbooru HTTP: ${payload.request?.status ?? "unknown"}`,
-      `Transport: ${payload.transport ?? "unknown"}`,
-      `Timings: ${payload.timings ? JSON.stringify(payload.timings) : "unknown"}`,
-      `Danbooru URL: ${payload.request?.url ?? payload.url ?? "unknown"}`,
-      `Returned posts: ${posts.length}`,
-    ].join("\n");
+    i18nNodes.forEach((node) => {
+      const label = getNestedValue(dictionary, node.dataset.i18n);
+      if (label) {
+        node.textContent = label;
+        node.closest("button")?.setAttribute("aria-label", label);
+      }
+    });
 
-    if (posts.length > 0) {
-      const summary = posts.map(summarizePost);
-      summaryEl.innerHTML = `<h3>Compact summary</h3><pre>${escapeHtml(JSON.stringify(summary, null, 2))}</pre>`;
-    }
-
-    resultsEl.textContent = JSON.stringify(payload, null, 2);
+    document.title = dictionary.app?.title || document.title;
   } catch (error) {
-    statusEl.textContent = `Request failed: ${error.message}`;
+    console.warn("Failed to load language file.", error);
   }
 }
 
-function escapeHtml(value) {
-  return value.replace(/[&<>"']/g, (char) => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    "\"": "&quot;",
-    "'": "&#39;",
-  }[char]));
-}
-
-form.addEventListener("submit", (event) => {
-  event.preventDefault();
-  runSearch();
+navButtons.forEach((button) => {
+  button.addEventListener("click", () => showPage(button.dataset.page));
 });
 
-runSearch();
+loadLanguage();
+showPage("search");

@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
 
 const here = dirname(fileURLToPath(import.meta.url));
+const projectRoot = dirname(here);
 const port = Number(process.env.PORT || 5174);
 const danbooruHost = "danbooru.donmai.us";
 const danbooruIpFallbacks = ["104.26.10.39", "172.67.70.99", "104.26.11.39"];
@@ -15,6 +16,8 @@ const mimeTypes = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".svg": "image/svg+xml; charset=utf-8",
 };
 
 function sendJson(response, status, payload) {
@@ -180,9 +183,10 @@ function parseJsonOrText(text) {
 async function handleStatic(request, response) {
   const requestUrl = new URL(request.url, `http://${request.headers.host}`);
   const pathname = requestUrl.pathname === "/" ? "/index.html" : requestUrl.pathname;
-  const filePath = join(here, pathname);
+  const staticRoot = pathname.startsWith("/icons/") ? projectRoot : here;
+  const filePath = join(staticRoot, pathname);
 
-  if (!filePath.startsWith(here)) {
+  if (!filePath.startsWith(staticRoot)) {
     response.writeHead(403);
     response.end("Forbidden");
     return;

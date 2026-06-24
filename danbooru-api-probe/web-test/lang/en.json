@@ -1,0 +1,11 @@
+{
+  "app": {
+    "title": "Danbooru Downloader"
+  },
+  "nav": {
+    "menu": "Menu",
+    "search": "Search",
+    "favorites": "Favorites",
+    "settings": "Settings"
+  }
+}
