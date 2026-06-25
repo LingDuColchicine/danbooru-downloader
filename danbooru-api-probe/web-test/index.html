@@ -66,6 +66,55 @@
                 <div class="suggestions-list" id="suggestions-list" role="listbox" aria-label="Tag suggestions"></div>
               </div>
             </div>
+
+            <section class="image-stream" aria-label="Search results preview">
+              <div class="image-page" aria-label="Page 1 preview images">
+                <article class="image-card placeholder-tall"></article>
+                <article class="image-card placeholder-square"></article>
+                <article class="image-card placeholder-wide"></article>
+                <article class="image-card placeholder-portrait"></article>
+                <article class="image-card placeholder-short"></article>
+                <article class="image-card placeholder-tall"></article>
+                <article class="image-card placeholder-square"></article>
+                <article class="image-card placeholder-portrait"></article>
+                <article class="image-card placeholder-wide"></article>
+                <article class="image-card placeholder-short"></article>
+                <article class="image-card placeholder-portrait"></article>
+                <article class="image-card placeholder-square"></article>
+              </div>
+
+              <div class="page-divider" aria-label="End of page 1">
+                <span>Page 1</span>
+              </div>
+
+              <div class="image-page" aria-label="Page 2 preview images">
+                <article class="image-card placeholder-wide"></article>
+                <article class="image-card placeholder-portrait"></article>
+                <article class="image-card placeholder-square"></article>
+                <article class="image-card placeholder-tall"></article>
+                <article class="image-card placeholder-short"></article>
+                <article class="image-card placeholder-square"></article>
+                <article class="image-card placeholder-tall"></article>
+                <article class="image-card placeholder-wide"></article>
+                <article class="image-card placeholder-portrait"></article>
+                <article class="image-card placeholder-short"></article>
+              </div>
+
+              <div class="page-divider" aria-label="End of page 2">
+                <span>Page 2</span>
+              </div>
+
+              <div class="image-page" aria-label="Page 3 preview images">
+                <article class="image-card placeholder-square"></article>
+                <article class="image-card placeholder-tall"></article>
+                <article class="image-card placeholder-portrait"></article>
+                <article class="image-card placeholder-wide"></article>
+                <article class="image-card placeholder-short"></article>
+                <article class="image-card placeholder-square"></article>
+                <article class="image-card placeholder-portrait"></article>
+                <article class="image-card placeholder-tall"></article>
+              </div>
+            </section>
           </div>
         </section>
         <section class="page-panel" data-page-panel="favorites">
@@ -76,6 +125,17 @@
         </section>
       </main>
     </div>
+
+    <div class="detail-backdrop" id="detail-backdrop" hidden></div>
+    <aside class="detail-panel" id="detail-panel" aria-hidden="true" aria-label="Image details">
+      <div class="detail-panel-header">
+        <h2>Image details</h2>
+        <button class="icon-button" id="close-detail" type="button" aria-label="Close details">
+          <span class="action-icon icon-x" aria-hidden="true"></span>
+        </button>
+      </div>
+      <div class="detail-content" id="detail-content"></div>
+    </aside>
 
     <script src="./main.js"></script>
   </body>

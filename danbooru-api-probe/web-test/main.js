@@ -10,6 +10,11 @@ const suggestionsPanel = document.querySelector("#suggestions-panel");
 const suggestionsList = document.querySelector("#suggestions-list");
 const confirmSearchButton = document.querySelector("#confirm-search");
 const clearSearchButton = document.querySelector("#clear-search");
+const imageCards = [...document.querySelectorAll(".image-card")];
+const detailBackdrop = document.querySelector("#detail-backdrop");
+const detailPanel = document.querySelector("#detail-panel");
+const detailContent = document.querySelector("#detail-content");
+const closeDetailButton = document.querySelector("#close-detail");
 
 const categoryNames = {
   0: "general",
@@ -24,6 +29,25 @@ let suggestions = [];
 let activeSuggestionIndex = -1;
 let autocompleteController;
 let autocompleteRequestId = 0;
+
+const samplePosts = [
+  {
+    id: 11650364,
+    source: "https://bsky.app/profile/did:plc:3illijehmrx4bqq4gazacxe5/post/3mkrr7g6mz22k",
+    rating: "s",
+    image_width: 1080,
+    image_height: 1450,
+    tag_string_artist: "thedollofbruce",
+    tag_string_character: "shizuku_murasaki",
+    tag_string_copyright: "hunter_x_hunter",
+    tag_string_general: "1girl adjusting_eyewear black_hair black_sweater blue_pants breasts cropped_sweater cross cross_necklace glasses jewelry large_breasts long_sleeves looking_at_viewer midriff navel necklace open_fly pants parted_lips solo spider_tattoo stomach stomach_tattoo sweater tattoo upper_body zoom_layer",
+    tag_string_meta: "commentary highres",
+    file_ext: "jpg",
+    file_size: 1489496,
+    file_url: "https://cdn.donmai.us/original/a6/3f/a63fd1ff8dbeaccdcd455fc0ce1f184d.jpg",
+    large_file_url: "https://cdn.donmai.us/sample/a6/3f/sample-a63fd1ff8dbeaccdcd455fc0ce1f184d.jpg",
+  },
+];
 
 function showPage(pageName) {
   navButtons.forEach((button) => {
@@ -229,6 +253,164 @@ function confirmSearch() {
   console.log("Search query:", query);
 }
 
+function formatFileSize(bytes) {
+  const size = Number(bytes);
+  if (!Number.isFinite(size) || size <= 0) {
+    return "";
+  }
+
+  if (size >= 1024 * 1024) {
+    return `${(size / 1024 / 1024).toFixed(2)} MB`;
+  }
+
+  if (size >= 1024) {
+    return `${(size / 1024).toFixed(1)} KB`;
+  }
+
+  return `${size} B`;
+}
+
+function splitTags(value) {
+  return String(value || "").split(/\s+/).filter(Boolean);
+}
+
+function appendDetailRow(list, label, value, options = {}) {
+  if (!value) {
+    return;
+  }
+
+  const row = document.createElement("div");
+  row.className = "detail-row";
+
+  const term = document.createElement("dt");
+  term.textContent = label;
+
+  const description = document.createElement("dd");
+  if (options.href) {
+    const link = document.createElement("a");
+    link.href = value;
+    link.target = "_blank";
+    link.rel = "noreferrer";
+    link.textContent = value;
+    description.append(link);
+  } else {
+    description.textContent = value;
+  }
+
+  row.append(term, description);
+  list.append(row);
+}
+
+function appendTagSection(parent, title, tags, className) {
+  const values = splitTags(tags);
+  if (values.length === 0) {
+    return;
+  }
+
+  const section = document.createElement("section");
+  section.className = "detail-tag-section";
+
+  const heading = document.createElement("h3");
+  heading.textContent = title;
+
+  const list = document.createElement("div");
+  list.className = "detail-tag-list";
+
+  values.forEach((tag) => {
+    const chip = document.createElement("span");
+    chip.className = `detail-tag ${className}`;
+    chip.textContent = tag;
+    list.append(chip);
+  });
+
+  section.append(heading, list);
+  parent.append(section);
+}
+
+function getDetailImageUrl(post) {
+  const url = post.file_url || post.large_file_url || post.preview_file_url || "";
+  return url;
+}
+
+function renderDetail(post) {
+  detailContent.innerHTML = "";
+
+  const imageWrap = document.createElement("div");
+  imageWrap.className = "detail-image-wrap";
+  if (post.image_width && post.image_height) {
+    imageWrap.style.aspectRatio = `${post.image_width} / ${post.image_height}`;
+  }
+
+  const imageUrl = getDetailImageUrl(post);
+  if (imageUrl) {
+    imageWrap.dataset.imageUrl = imageUrl;
+    const image = document.createElement("img");
+    image.alt = `Danbooru post ${post.id}`;
+    image.loading = "eager";
+    image.decoding = "async";
+    image.referrerPolicy = "no-referrer";
+    image.addEventListener("error", () => {
+      imageWrap.classList.add("image-load-failed");
+    });
+    image.src = imageUrl;
+    imageWrap.append(image);
+  }
+
+  const downloadButton = document.createElement("button");
+  downloadButton.className = "detail-download-button";
+  downloadButton.type = "button";
+  downloadButton.textContent = "Download original";
+  downloadButton.disabled = !post.file_url;
+  downloadButton.addEventListener("click", () => {
+    if (!post.file_url) {
+      return;
+    }
+
+    const link = document.createElement("a");
+    link.href = post.file_url;
+    link.download = `danbooru-${post.id}.${post.file_ext || "jpg"}`;
+    link.rel = "noreferrer";
+    document.body.append(link);
+    link.click();
+    link.remove();
+  });
+
+  const info = document.createElement("dl");
+  info.className = "detail-info";
+
+  appendDetailRow(info, "ID", post.id);
+  appendDetailRow(info, "Source", post.source, { href: true });
+  appendDetailRow(info, "Dimensions", post.image_width && post.image_height ? `${post.image_width} x ${post.image_height}` : "");
+  appendDetailRow(info, "Format", post.file_ext ? post.file_ext.toUpperCase() : "");
+  appendDetailRow(info, "Size", formatFileSize(post.file_size));
+
+  const tagSections = document.createElement("div");
+  tagSections.className = "detail-tags";
+  appendTagSection(tagSections, "Artist", post.tag_string_artist, "tag-artist");
+  appendTagSection(tagSections, "Character", post.tag_string_character, "tag-character");
+  appendTagSection(tagSections, "Copyright", post.tag_string_copyright, "tag-copyright");
+  appendTagSection(tagSections, "General", post.tag_string_general, "tag-general");
+  appendTagSection(tagSections, "Meta", post.tag_string_meta, "tag-meta");
+
+  detailContent.append(imageWrap, downloadButton, info, tagSections);
+}
+
+function openDetail(post) {
+  renderDetail(post);
+  detailBackdrop.hidden = false;
+  document.body.classList.add("detail-open");
+  detailPanel.classList.add("open");
+  detailPanel.setAttribute("aria-hidden", "false");
+  detailContent.scrollTop = 0;
+}
+
+function closeDetail() {
+  detailPanel.classList.remove("open");
+  detailPanel.setAttribute("aria-hidden", "true");
+  detailBackdrop.hidden = true;
+  document.body.classList.remove("detail-open");
+}
+
 navButtons.forEach((button) => {
   button.addEventListener("click", () => showPage(button.dataset.page));
 });
@@ -309,6 +491,29 @@ clearSearchButton?.addEventListener("click", () => {
   renderSelectedTags();
   renderSuggestions();
   tagInput.focus();
+});
+
+imageCards.forEach((card, index) => {
+  card.setAttribute("role", "button");
+  card.setAttribute("tabindex", "0");
+  card.setAttribute("aria-label", `Open image ${index + 1} details`);
+  card.addEventListener("click", () => openDetail(samplePosts[index % samplePosts.length]));
+  card.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      openDetail(samplePosts[index % samplePosts.length]);
+    }
+  });
+});
+
+closeDetailButton?.addEventListener("click", closeDetail);
+detailBackdrop?.addEventListener("click", closeDetail);
+detailPanel?.addEventListener("wheel", (event) => event.stopPropagation(), { passive: true });
+detailPanel?.addEventListener("touchmove", (event) => event.stopPropagation(), { passive: true });
+window.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && detailPanel.classList.contains("open")) {
+    closeDetail();
+  }
 });
 
 loadLanguage();

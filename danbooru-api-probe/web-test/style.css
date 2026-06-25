@@ -9,6 +9,7 @@
   --accent-soft: #fff0f6;
   --focus-ring: rgba(232, 79, 138, 0.16);
   --shadow: 10px 0 26px rgba(26, 38, 58, 0.08);
+  --content-width: 980px;
   --menu-closed: 72px;
   --menu-open: 208px;
 }
@@ -23,6 +24,10 @@ body {
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   margin: 0;
   min-height: 100vh;
+}
+
+body.detail-open {
+  overflow: hidden;
 }
 
 button {
@@ -207,7 +212,7 @@ button {
 
 .search-workspace {
   margin: 0 auto;
-  max-width: 980px;
+  width: min(100%, var(--content-width));
   padding: 18px 24px;
 }
 
@@ -465,6 +470,294 @@ button {
   color: #2b9b57;
 }
 
+.image-stream {
+  display: grid;
+  gap: 12px;
+  margin-top: 28px;
+  width: 100%;
+}
+
+.image-page {
+  column-count: 4;
+  column-gap: 16px;
+  width: 100%;
+}
+
+.image-card {
+  background: linear-gradient(145deg, #f8fafc, #ffffff);
+  border: 1px solid #eef1f5;
+  border-radius: 8px;
+  break-inside: avoid;
+  box-shadow: 0 8px 22px rgba(31, 41, 55, 0.1);
+  cursor: pointer;
+  display: block;
+  margin: 0 0 16px;
+  overflow: hidden;
+  position: relative;
+  transition: box-shadow 160ms ease, transform 160ms ease;
+  width: 100%;
+}
+
+.image-card:hover {
+  box-shadow: 0 12px 28px rgba(31, 41, 55, 0.14);
+  transform: translateY(-2px);
+}
+
+.image-card:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 3px;
+}
+
+.image-card::before {
+  background: linear-gradient(90deg, rgba(232, 79, 138, 0.05), rgba(154, 164, 178, 0.08));
+  content: "";
+  inset: 0;
+  position: absolute;
+}
+
+.placeholder-short {
+  height: 168px;
+}
+
+.placeholder-square {
+  height: 216px;
+}
+
+.placeholder-wide {
+  height: 142px;
+}
+
+.placeholder-portrait {
+  height: 286px;
+}
+
+.placeholder-tall {
+  height: 360px;
+}
+
+.page-divider {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  margin: 4px 0 16px;
+  width: 100%;
+}
+
+.page-divider::after {
+  background: #e4e8ef;
+  content: "";
+  flex: 1;
+  height: 1px;
+}
+
+.page-divider span {
+  color: #8a94a6;
+  flex: 0 0 auto;
+  font-size: 13px;
+  font-weight: 740;
+  letter-spacing: 0;
+}
+
+.detail-backdrop {
+  background: rgba(24, 34, 50, 0.16);
+  inset: 0;
+  position: fixed;
+  z-index: 8;
+}
+
+.detail-backdrop[hidden] {
+  display: none;
+}
+
+.detail-panel {
+  background: #ffffff;
+  border-left: 1px solid #e7eaf0;
+  box-shadow: -18px 0 42px rgba(28, 36, 48, 0.14);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  max-width: min(520px, calc(100vw - 48px));
+  overscroll-behavior: contain;
+  position: fixed;
+  right: 0;
+  top: 0;
+  transform: translateX(100%);
+  transition: transform 220ms ease;
+  width: 460px;
+  z-index: 9;
+}
+
+.detail-panel.open {
+  transform: translateX(0);
+}
+
+.detail-panel-header {
+  align-items: center;
+  border-bottom: 1px solid #eef1f5;
+  display: flex;
+  justify-content: space-between;
+  padding: 18px 18px 14px 22px;
+}
+
+.detail-panel-header h2 {
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 760;
+  letter-spacing: 0;
+  line-height: 1.2;
+  margin: 0;
+}
+
+.detail-content {
+  flex: 1;
+  min-height: 0;
+  overscroll-behavior: contain;
+  overflow: auto;
+  padding: 18px 22px 28px;
+}
+
+.detail-image-wrap {
+  background: #ffffff;
+  border: 1px solid #edf0f4;
+  border-radius: 10px;
+  display: block;
+  margin: 0 0 10px;
+  overflow: hidden;
+  position: relative;
+  width: 100%;
+}
+
+.detail-image-wrap img {
+  display: block;
+  height: auto;
+  max-width: 100%;
+  position: relative;
+  z-index: 1;
+  width: 100%;
+}
+
+.detail-image-wrap.image-load-failed {
+  min-height: 220px;
+}
+
+.detail-image-wrap.image-load-failed::after {
+  background: #f7f9fc;
+  color: #8d98aa;
+  content: "Image failed to load: " attr(data-image-url);
+  display: block;
+  font-size: 13px;
+  font-weight: 740;
+  line-height: 1.4;
+  padding: 18px;
+  overflow-wrap: anywhere;
+}
+
+.detail-download-button {
+  align-items: center;
+  background: var(--accent);
+  border: 0;
+  border-radius: 10px;
+  color: #ffffff;
+  cursor: pointer;
+  display: flex;
+  font-size: 14px;
+  font-weight: 760;
+  justify-content: center;
+  letter-spacing: 0;
+  margin: 0 0 22px;
+  min-height: 42px;
+  padding: 0 16px;
+  transition: background-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+  width: 100%;
+}
+
+.detail-download-button:hover {
+  background: #d9437c;
+  box-shadow: 0 10px 22px rgba(232, 79, 138, 0.18);
+  transform: translateY(-1px);
+}
+
+.detail-download-button:disabled {
+  background: #d5dbe5;
+  box-shadow: none;
+  color: #8792a4;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.detail-info {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 22px;
+}
+
+.detail-row {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 92px minmax(0, 1fr);
+}
+
+.detail-row dt {
+  color: #8a94a6;
+  font-size: 12px;
+  font-weight: 760;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.detail-row dd {
+  color: #354052;
+  font-size: 14px;
+  font-weight: 620;
+  line-height: 1.4;
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.detail-row a {
+  color: #d94986;
+  text-decoration: none;
+}
+
+.detail-row a:hover {
+  text-decoration: underline;
+}
+
+.detail-tags {
+  display: grid;
+  gap: 18px;
+}
+
+.detail-tag-section {
+  display: grid;
+  gap: 10px;
+}
+
+.detail-tag-section h3 {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 780;
+  letter-spacing: 0;
+  margin: 0;
+}
+
+.detail-tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.detail-tag {
+  border-radius: 999px;
+  color: #354052;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 7px 10px;
+}
+
 @media (max-width: 720px) {
   :root {
     --menu-closed: 64px;
@@ -502,5 +795,58 @@ button {
 
   .suggestion-category {
     display: none;
+  }
+
+  .image-stream {
+    gap: 10px;
+    margin-top: 22px;
+  }
+
+  .image-page {
+    column-count: 2;
+    column-gap: 12px;
+  }
+
+  .image-card {
+    margin-bottom: 12px;
+  }
+
+  .placeholder-short {
+    height: 132px;
+  }
+
+  .placeholder-square {
+    height: 168px;
+  }
+
+  .placeholder-wide {
+    height: 112px;
+  }
+
+  .placeholder-portrait {
+    height: 224px;
+  }
+
+  .placeholder-tall {
+    height: 284px;
+  }
+
+  .detail-panel {
+    max-width: 100vw;
+    width: 100vw;
+  }
+
+  .detail-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 460px) {
+  .image-stream {
+    gap: 8px;
+  }
+
+  .image-page {
+    column-count: 1;
   }
 }
