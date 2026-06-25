@@ -34,7 +34,39 @@
 
       <main class="page-content" aria-live="polite">
         <section class="page-panel active" data-page-panel="search">
-          <span>1</span>
+          <div class="search-workspace">
+            <div class="search-header">
+              <h1 data-i18n="search.title">Search</h1>
+            </div>
+
+            <div class="tag-search" id="tag-search">
+              <div class="tag-input-shell" id="tag-input-shell">
+                <div class="selected-tags" id="selected-tags" aria-label="Selected tags"></div>
+                <input
+                  id="tag-input"
+                  class="tag-input"
+                  type="text"
+                  autocomplete="off"
+                  spellcheck="false"
+                  data-i18n-placeholder="search.placeholder"
+                  placeholder="Type tags..."
+                  aria-label="Search tags"
+                >
+                <div class="search-actions">
+                  <button class="icon-button" id="confirm-search" type="button" aria-label="Search">
+                    <span class="action-icon icon-search-check" aria-hidden="true"></span>
+                  </button>
+                  <button class="icon-button" id="clear-search" type="button" aria-label="Clear">
+                    <span class="action-icon icon-trash" aria-hidden="true"></span>
+                  </button>
+                </div>
+              </div>
+
+              <div class="suggestions-panel" id="suggestions-panel" hidden>
+                <div class="suggestions-list" id="suggestions-list" role="listbox" aria-label="Tag suggestions"></div>
+              </div>
+            </div>
+          </div>
         </section>
         <section class="page-panel" data-page-panel="favorites">
           <span>2</span>

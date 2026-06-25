@@ -60,6 +60,38 @@ async function handlePosts(request, response) {
   }
 }
 
+async function handleAutocomplete(request, response) {
+  const requestUrl = new URL(request.url, `http://${request.headers.host}`);
+  const query = requestUrl.searchParams.get("search[query]") || "";
+  const type = requestUrl.searchParams.get("search[type]") || "tag_query";
+  const limit = requestUrl.searchParams.get("limit") || "12";
+
+  const danbooruUrl = new URL("https://danbooru.donmai.us/autocomplete.json");
+  danbooruUrl.searchParams.set("search[query]", query);
+  danbooruUrl.searchParams.set("search[type]", type);
+  danbooruUrl.searchParams.set("limit", limit);
+
+  try {
+    const upstream = await fetchDanbooru(danbooruUrl);
+    response.writeHead(upstream.status, {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+    });
+    response.end(JSON.stringify(upstream.payload, null, 2));
+  } catch (error) {
+    sendJson(response, 502, {
+      error: "Danbooru autocomplete request failed",
+      message: error.message,
+      cause: error.cause ? {
+        name: error.cause.name,
+        code: error.cause.code,
+        message: error.cause.message,
+      } : null,
+      url: danbooruUrl.toString(),
+    });
+  }
+}
+
 async function fetchDanbooru(danbooruUrl) {
   const startedAt = Date.now();
   let timeout;
@@ -208,6 +240,11 @@ async function handleStatic(request, response) {
 const server = createServer((request, response) => {
   if (request.url.startsWith("/api/posts")) {
     handlePosts(request, response);
+    return;
+  }
+
+  if (request.url.startsWith("/api/autocomplete")) {
+    handleAutocomplete(request, response);
     return;
   }
 

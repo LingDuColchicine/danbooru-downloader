@@ -7,5 +7,9 @@
     "search": "Search",
     "favorites": "Favorites",
     "settings": "Settings"
+  },
+  "search": {
+    "title": "Search",
+    "placeholder": "Type tags..."
   }
 }
