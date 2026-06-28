@@ -10,6 +10,26 @@
   },
   "search": {
     "title": "Search",
-    "placeholder": "Type tags..."
+    "placeholder": "Type tags...",
+    "rating": "Rating",
+    "ratingNone": "None",
+    "ratingGeneral": "General",
+    "ratingSensitive": "Sensitive",
+    "ratingQuestionable": "Questionable",
+    "ratingExplicit": "Explicit"
+  },
+  "favorites": {
+    "title": "Favorites",
+    "empty": "No favorite images yet."
+  },
+  "settings": {
+    "title": "Settings",
+    "accountLogin": "Account login",
+    "username": "Username",
+    "apiKey": "API key",
+    "accountHelp": "Create it from More >> Profile after logging in, open API Keys, then create a key directly without selecting any extra options.",
+    "noAccount": "No account",
+    "thumbnailLoading": "Thumbnail loading",
+    "detailLoading": "Detail image loading"
   }
 }

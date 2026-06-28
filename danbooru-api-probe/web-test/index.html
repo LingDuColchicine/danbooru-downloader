@@ -37,6 +37,9 @@
           <div class="search-workspace">
             <div class="search-header">
               <h1 data-i18n="search.title">Search</h1>
+              <button class="icon-button header-icon-button" id="refresh-page" type="button" aria-label="Refresh page">
+                <span class="action-icon icon-refresh" aria-hidden="true"></span>
+              </button>
             </div>
 
             <div class="tag-search" id="tag-search">
@@ -67,63 +70,110 @@
               </div>
             </div>
 
-            <section class="image-stream" aria-label="Search results preview">
-              <div class="image-page" aria-label="Page 1 preview images">
-                <article class="image-card placeholder-tall"></article>
-                <article class="image-card placeholder-square"></article>
-                <article class="image-card placeholder-wide"></article>
-                <article class="image-card placeholder-portrait"></article>
-                <article class="image-card placeholder-short"></article>
-                <article class="image-card placeholder-tall"></article>
-                <article class="image-card placeholder-square"></article>
-                <article class="image-card placeholder-portrait"></article>
-                <article class="image-card placeholder-wide"></article>
-                <article class="image-card placeholder-short"></article>
-                <article class="image-card placeholder-portrait"></article>
-                <article class="image-card placeholder-square"></article>
+            <div class="search-filter-row" aria-label="Search filters">
+              <div class="filter-control">
+                <span data-i18n="search.rating">Rating</span>
+                <div class="custom-select" id="rating-filter" data-value="">
+                  <button
+                    class="custom-select-button"
+                    id="rating-filter-button"
+                    type="button"
+                    aria-haspopup="listbox"
+                    aria-expanded="false"
+                    aria-label="Rating filter"
+                  >
+                    <span id="rating-filter-label" data-i18n="search.ratingNone">None</span>
+                  </button>
+                  <div class="custom-select-menu" id="rating-filter-menu" role="listbox" hidden>
+                    <button class="custom-select-option active" type="button" role="option" aria-selected="true" data-rating-value="" data-i18n="search.ratingNone">None</button>
+                    <button class="custom-select-option" type="button" role="option" aria-selected="false" data-rating-value="g" data-i18n="search.ratingGeneral">General</button>
+                    <button class="custom-select-option" type="button" role="option" aria-selected="false" data-rating-value="s" data-i18n="search.ratingSensitive">Sensitive</button>
+                    <button class="custom-select-option" type="button" role="option" aria-selected="false" data-rating-value="q" data-i18n="search.ratingQuestionable">Questionable</button>
+                    <button class="custom-select-option" type="button" role="option" aria-selected="false" data-rating-value="e" data-i18n="search.ratingExplicit">Explicit</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <section class="image-stream" id="search-results" aria-label="Search results"></section>
+            <div class="stream-status" id="search-status" aria-live="polite"></div>
+            <div class="stream-sentinel" id="search-sentinel" aria-hidden="true"></div>
+          </div>
+        </section>
+        <section class="page-panel" data-page-panel="favorites">
+          <div class="search-workspace">
+            <div class="search-header">
+              <h1 data-i18n="favorites.title">Favorites</h1>
+            </div>
+
+            <section class="image-stream favorites-stream" id="favorites-stream" aria-label="Favorite images"></section>
+            <p class="empty-state" id="favorites-empty" data-i18n="favorites.empty">No favorite images yet.</p>
+          </div>
+        </section>
+        <section class="page-panel" data-page-panel="settings">
+          <div class="search-workspace">
+            <div class="search-header">
+              <h1 data-i18n="settings.title">Settings</h1>
+            </div>
+
+            <section class="settings-panel" aria-label="Image loading settings">
+              <div class="settings-row account-settings-row">
+                <div>
+                  <h2 data-i18n="settings.accountLogin">Account login</h2>
+                </div>
+                <div class="account-login-panel">
+                  <div class="account-input-row">
+                    <input id="account-username" class="settings-input" type="text" autocomplete="username" spellcheck="false" data-i18n-placeholder="settings.username" placeholder="Username" aria-label="Username">
+                    <input id="account-api-key" class="settings-input" type="password" autocomplete="current-password" spellcheck="false" data-i18n-placeholder="settings.apiKey" placeholder="API key" aria-label="API key">
+                    <button class="icon-button account-add-button" id="add-account" type="button" aria-label="Add account">
+                      <span class="action-icon icon-plus" aria-hidden="true"></span>
+                    </button>
+                  </div>
+                  <p class="account-help">
+                    <span class="action-icon icon-info" aria-hidden="true"></span>
+                    <span data-i18n="settings.accountHelp">Create it from More &gt;&gt; Profile after logging in, open API Keys, then create a key directly without selecting any extra options.</span>
+                  </p>
+                  <p class="account-status" id="account-status" aria-live="polite"></p>
+                  <div class="account-list" id="account-list" aria-label="Saved accounts"></div>
+                </div>
               </div>
 
-              <div class="page-divider" aria-label="End of page 1">
-                <span>Page 1</span>
+              <div class="settings-row">
+                <div>
+                  <h2 data-i18n="settings.thumbnailLoading">Thumbnail loading</h2>
+                </div>
+                <div class="segmented-control" role="group" aria-label="Thumbnail loading">
+                  <button class="segment-button" type="button" data-loading-target="thumbnail" data-loading-mode="auto">Auto</button>
+                  <button class="segment-button" type="button" data-loading-target="thumbnail" data-loading-mode="direct">Direct</button>
+                  <button class="segment-button" type="button" data-loading-target="thumbnail" data-loading-mode="proxy">Proxy</button>
+                </div>
               </div>
 
-              <div class="image-page" aria-label="Page 2 preview images">
-                <article class="image-card placeholder-wide"></article>
-                <article class="image-card placeholder-portrait"></article>
-                <article class="image-card placeholder-square"></article>
-                <article class="image-card placeholder-tall"></article>
-                <article class="image-card placeholder-short"></article>
-                <article class="image-card placeholder-square"></article>
-                <article class="image-card placeholder-tall"></article>
-                <article class="image-card placeholder-wide"></article>
-                <article class="image-card placeholder-portrait"></article>
-                <article class="image-card placeholder-short"></article>
-              </div>
-
-              <div class="page-divider" aria-label="End of page 2">
-                <span>Page 2</span>
-              </div>
-
-              <div class="image-page" aria-label="Page 3 preview images">
-                <article class="image-card placeholder-square"></article>
-                <article class="image-card placeholder-tall"></article>
-                <article class="image-card placeholder-portrait"></article>
-                <article class="image-card placeholder-wide"></article>
-                <article class="image-card placeholder-short"></article>
-                <article class="image-card placeholder-square"></article>
-                <article class="image-card placeholder-portrait"></article>
-                <article class="image-card placeholder-tall"></article>
+              <div class="settings-row">
+                <div>
+                  <h2 data-i18n="settings.detailLoading">Detail image loading</h2>
+                </div>
+                <div class="segmented-control" role="group" aria-label="Detail image loading">
+                  <button class="segment-button" type="button" data-loading-target="detail" data-loading-mode="auto">Auto</button>
+                  <button class="segment-button" type="button" data-loading-target="detail" data-loading-mode="direct">Direct</button>
+                  <button class="segment-button" type="button" data-loading-target="detail" data-loading-mode="proxy">Proxy</button>
+                </div>
               </div>
             </section>
           </div>
         </section>
-        <section class="page-panel" data-page-panel="favorites">
-          <span>2</span>
-        </section>
-        <section class="page-panel" data-page-panel="settings">
-          <span>3</span>
-        </section>
       </main>
+    </div>
+
+    <div class="selection-actions" id="selection-actions" hidden>
+      <button class="selection-action-button" id="clear-selection" type="button">
+        <span class="action-icon icon-x" aria-hidden="true"></span>
+        <span>全部取消</span>
+      </button>
+      <button class="selection-action-button primary" id="download-selection" type="button">
+        <span class="action-icon icon-download" aria-hidden="true"></span>
+        <span>下载原图</span>
+      </button>
     </div>
 
     <div class="detail-backdrop" id="detail-backdrop" hidden></div>
