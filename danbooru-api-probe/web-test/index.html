@@ -4,6 +4,9 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Danbooru Downloader</title>
+    <script>
+      document.documentElement.dataset.theme = localStorage.getItem("danbooruDownloader.theme") || "light";
+    </script>
     <link rel="stylesheet" href="./style.css">
   </head>
   <body>
@@ -104,9 +107,21 @@
           <div class="search-workspace">
             <div class="search-header">
               <h1 data-i18n="favorites.title">Favorites</h1>
+              <div class="header-actions">
+                <button class="text-icon-button" id="import-favorites" type="button">
+                  <span class="action-icon icon-plus" aria-hidden="true"></span>
+                  <span data-i18n="favorites.import">Import</span>
+                </button>
+                <button class="text-icon-button" id="export-favorites" type="button">
+                  <span class="action-icon icon-download" aria-hidden="true"></span>
+                  <span data-i18n="favorites.export">Export</span>
+                </button>
+              </div>
+              <input id="favorites-file-input" type="file" accept="application/json,.json" hidden>
             </div>
 
             <section class="image-stream favorites-stream" id="favorites-stream" aria-label="Favorite images"></section>
+            <div class="stream-status" id="favorites-status" aria-live="polite"></div>
             <p class="empty-state" id="favorites-empty" data-i18n="favorites.empty">No favorite images yet.</p>
           </div>
         </section>
@@ -117,6 +132,16 @@
             </div>
 
             <section class="settings-panel" aria-label="Image loading settings">
+              <div class="settings-row">
+                <div>
+                  <h2 data-i18n="settings.theme">Theme</h2>
+                </div>
+                <div class="segmented-control" role="group" aria-label="Theme">
+                  <button class="segment-button" type="button" data-theme-option="light" data-i18n="settings.themeLight">Light</button>
+                  <button class="segment-button" type="button" data-theme-option="dark" data-i18n="settings.themeDark">Dark</button>
+                </div>
+              </div>
+
               <div class="settings-row account-settings-row">
                 <div>
                   <h2 data-i18n="settings.accountLogin">Account login</h2>
@@ -133,6 +158,10 @@
                     <span class="action-icon icon-info" aria-hidden="true"></span>
                     <span data-i18n="settings.accountHelp">Create it from More &gt;&gt; Profile after logging in, open API Keys, then create a key directly without selecting any extra options.</span>
                   </p>
+                  <button class="merge-favorites-button" id="merge-guest-favorites" type="button" hidden>
+                    <span class="action-icon icon-heart" aria-hidden="true"></span>
+                    <span data-i18n="settings.mergeGuestFavorites">Add no-account favorites to this account</span>
+                  </button>
                   <p class="account-status" id="account-status" aria-live="polite"></p>
                   <div class="account-list" id="account-list" aria-label="Saved accounts"></div>
                 </div>
@@ -159,6 +188,16 @@
                   <button class="segment-button" type="button" data-loading-target="detail" data-loading-mode="proxy">Proxy</button>
                 </div>
               </div>
+
+              <div class="settings-row">
+                <div>
+                  <h2 data-i18n="settings.downloadHistory">Download history</h2>
+                </div>
+                <button class="danger-action-button" id="clear-download-history" type="button">
+                  <span class="action-icon icon-x" aria-hidden="true"></span>
+                  <span data-i18n="settings.clearDownloaded">Clear downloaded records</span>
+                </button>
+              </div>
             </section>
           </div>
         </section>
@@ -175,6 +214,8 @@
         <span>下载原图</span>
       </button>
     </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
     <div class="detail-backdrop" id="detail-backdrop" hidden></div>
     <aside class="detail-panel" id="detail-panel" aria-hidden="true" aria-label="Image details">

@@ -209,6 +209,39 @@ async function handleAutocomplete(request, response) {
   }
 }
 
+async function handlePostShow(request, response) {
+  const requestUrl = new URL(request.url, `http://${request.headers.host}`);
+  const match = requestUrl.pathname.match(/^\/api\/posts\/(\d+)$/);
+  if (!match) {
+    sendJson(response, 404, { error: "Post not found" });
+    return;
+  }
+
+  const auth = getAuthFromRequest(request);
+  const danbooruUrl = new URL(`https://danbooru.donmai.us/posts/${match[1]}.json`);
+  applyAuthParams(danbooruUrl, auth);
+
+  try {
+    const upstream = await fetchDanbooru(danbooruUrl);
+    response.writeHead(upstream.status, {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+    });
+    response.end(JSON.stringify(upstream.payload, null, 2));
+  } catch (error) {
+    sendJson(response, 502, {
+      error: "Danbooru post request failed",
+      message: error.message,
+      cause: error.cause ? {
+        name: error.cause.name,
+        code: error.cause.code,
+        message: error.cause.message,
+      } : null,
+      url: getSafeUrl(danbooruUrl),
+    });
+  }
+}
+
 async function handleAccountVerify(request, response) {
   if (request.method !== "POST") {
     sendJson(response, 405, { error: "Method not allowed" });
@@ -570,6 +603,11 @@ const server = createServer((request, response) => {
   }
 
   if (request.url.startsWith("/api/posts")) {
+    if (/^\/api\/posts\/\d+(?:\?|$)/.test(request.url)) {
+      handlePostShow(request, response);
+      return;
+    }
+
     handlePosts(request, response);
     return;
   }

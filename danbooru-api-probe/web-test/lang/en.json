@@ -20,16 +20,24 @@
   },
   "favorites": {
     "title": "Favorites",
+    "import": "Import",
+    "export": "Export",
     "empty": "No favorite images yet."
   },
   "settings": {
     "title": "Settings",
+    "theme": "Theme",
+    "themeLight": "Light",
+    "themeDark": "Dark",
     "accountLogin": "Account login",
     "username": "Username",
     "apiKey": "API key",
     "accountHelp": "Create it from More >> Profile after logging in, open API Keys, then create a key directly without selecting any extra options.",
+    "mergeGuestFavorites": "Add no-account favorites to this account",
     "noAccount": "No account",
     "thumbnailLoading": "Thumbnail loading",
-    "detailLoading": "Detail image loading"
+    "detailLoading": "Detail image loading",
+    "downloadHistory": "Download history",
+    "clearDownloaded": "Clear downloaded records"
   }
 }

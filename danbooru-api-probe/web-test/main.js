@@ -21,14 +21,22 @@ const searchStatus = document.querySelector("#search-status");
 const searchSentinel = document.querySelector("#search-sentinel");
 const favoritesStream = document.querySelector("#favorites-stream");
 const favoritesEmpty = document.querySelector("#favorites-empty");
+const favoritesStatus = document.querySelector("#favorites-status");
+const importFavoritesButton = document.querySelector("#import-favorites");
+const exportFavoritesButton = document.querySelector("#export-favorites");
+const favoritesFileInput = document.querySelector("#favorites-file-input");
 const selectionActions = document.querySelector("#selection-actions");
 const clearSelectionButton = document.querySelector("#clear-selection");
 const downloadSelectionButton = document.querySelector("#download-selection");
+const toast = document.querySelector("#toast");
 const accountUsernameInput = document.querySelector("#account-username");
 const accountApiKeyInput = document.querySelector("#account-api-key");
 const addAccountButton = document.querySelector("#add-account");
 const accountStatus = document.querySelector("#account-status");
 const accountList = document.querySelector("#account-list");
+const mergeGuestFavoritesButton = document.querySelector("#merge-guest-favorites");
+const clearDownloadHistoryButton = document.querySelector("#clear-download-history");
+const themeOptionButtons = [...document.querySelectorAll("[data-theme-option]")];
 const loadingModeButtons = [...document.querySelectorAll("[data-loading-target][data-loading-mode]")];
 const detailBackdrop = document.querySelector("#detail-backdrop");
 const detailPanel = document.querySelector("#detail-panel");
@@ -48,7 +56,6 @@ let suggestions = [];
 let activeSuggestionIndex = -1;
 let autocompleteController;
 let autocompleteRequestId = 0;
-const likedImages = new Set();
 const selectedImages = new Set();
 const imageStore = new Map();
 const postsPerPage = 20;
@@ -61,16 +68,26 @@ let searchObserver;
 let autoSearchTimer;
 let lastSubmittedSearchTags = "";
 let activeRating = "";
+let activeTheme = "light";
 const searchSessionKey = "danbooruDownloader.searchSession";
+const themeSettingsKey = "danbooruDownloader.theme";
 const loadingSettingsKey = "danbooruDownloader.loadingSettings";
 const accountSettingsKey = "danbooruDownloader.accounts";
 const activeAccountKey = "danbooruDownloader.activeAccountId";
+const favoritesSettingsKey = "danbooruDownloader.favoritesByAccount";
+const downloadedRecordsKey = "danbooruDownloader.downloadedPostIds";
+const guestFavoriteAccountId = "__guest__";
 const loadingSettings = {
   thumbnail: "auto",
   detail: "auto",
 };
 let savedAccounts = [];
 let activeAccountId = "";
+let favoritesByAccount = {};
+let downloadedPostIds = new Set();
+let favoriteRenderRequestId = 0;
+let activeDetailPost = null;
+let toastTimer;
 
 function showPage(pageName) {
   navButtons.forEach((button) => {
@@ -94,6 +111,37 @@ function getNestedValue(source, path) {
 
 function isLoadingMode(value) {
   return value === "auto" || value === "direct" || value === "proxy";
+}
+
+function isThemeMode(value) {
+  return value === "light" || value === "dark";
+}
+
+function applyThemeSetting(theme) {
+  activeTheme = isThemeMode(theme) ? theme : "light";
+  document.documentElement.dataset.theme = activeTheme;
+}
+
+function loadThemeSetting() {
+  applyThemeSetting(localStorage.getItem(themeSettingsKey) || document.documentElement.dataset.theme || "light");
+}
+
+function saveThemeSetting() {
+  localStorage.setItem(themeSettingsKey, activeTheme);
+}
+
+function renderThemeSettings() {
+  themeOptionButtons.forEach((button) => {
+    const isActive = button.dataset.themeOption === activeTheme;
+    button.classList.toggle("active", isActive);
+    button.setAttribute("aria-pressed", String(isActive));
+  });
+}
+
+function setTheme(theme) {
+  applyThemeSetting(theme);
+  saveThemeSetting();
+  renderThemeSettings();
 }
 
 function loadImageSettings() {
@@ -147,6 +195,208 @@ function saveAccountSettings() {
 
 function getActiveAccount() {
   return savedAccounts.find((account) => account.id === activeAccountId) || null;
+}
+
+function getFavoriteAccountId() {
+  return activeAccountId || guestFavoriteAccountId;
+}
+
+function normalizeFavoriteId(value) {
+  const id = String(value || "").trim();
+  return /^\d+$/.test(id) ? id : "";
+}
+
+function normalizeFavoriteIds(values) {
+  const ids = Array.isArray(values) ? values : [];
+  return [...new Set(ids.map(normalizeFavoriteId).filter(Boolean))];
+}
+
+function ensureFavoriteBucket(accountId = getFavoriteAccountId()) {
+  if (!Array.isArray(favoritesByAccount[accountId])) {
+    favoritesByAccount[accountId] = [];
+  }
+
+  favoritesByAccount[accountId] = normalizeFavoriteIds(favoritesByAccount[accountId]);
+  return favoritesByAccount[accountId];
+}
+
+function getCurrentFavoriteIds() {
+  return ensureFavoriteBucket(getFavoriteAccountId());
+}
+
+function hasFavorite(imageId) {
+  return getCurrentFavoriteIds().includes(normalizeFavoriteId(imageId));
+}
+
+function saveFavoriteSettings() {
+  const normalized = {};
+  Object.entries(favoritesByAccount).forEach(([accountId, ids]) => {
+    const cleanIds = normalizeFavoriteIds(ids);
+    if (cleanIds.length > 0) {
+      normalized[accountId] = cleanIds;
+    }
+  });
+  favoritesByAccount = normalized;
+  localStorage.setItem(favoritesSettingsKey, JSON.stringify(favoritesByAccount));
+}
+
+function loadFavoriteSettings() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(favoritesSettingsKey) || "{}");
+    if (Array.isArray(saved)) {
+      favoritesByAccount = { [guestFavoriteAccountId]: normalizeFavoriteIds(saved) };
+    } else if (saved && typeof saved === "object") {
+      favoritesByAccount = Object.fromEntries(
+        Object.entries(saved)
+          .map(([accountId, ids]) => [accountId, normalizeFavoriteIds(ids)])
+          .filter(([, ids]) => ids.length > 0),
+      );
+    }
+  } catch (error) {
+    console.warn("Failed to load favorites.", error);
+    favoritesByAccount = {};
+  }
+}
+
+function setFavoritesStatus(message = "") {
+  if (favoritesStatus) {
+    favoritesStatus.textContent = message;
+  }
+}
+
+function syncAllImageCards() {
+  document.querySelectorAll(".image-card").forEach((card) => {
+    const post = imageStore.get(card.dataset.imageId);
+    if (post) {
+      syncImageCardControls(card, post);
+    }
+  });
+}
+
+function updateMergeGuestFavoritesAction() {
+  if (!mergeGuestFavoritesButton) {
+    return;
+  }
+
+  const guestCount = ensureFavoriteBucket(guestFavoriteAccountId).length;
+  mergeGuestFavoritesButton.hidden = !activeAccountId || guestCount === 0;
+  mergeGuestFavoritesButton.disabled = !activeAccountId || guestCount === 0;
+}
+
+function mergeGuestFavoritesToActiveAccount({ confirm = false } = {}) {
+  if (!activeAccountId) {
+    return 0;
+  }
+
+  const guestIds = ensureFavoriteBucket(guestFavoriteAccountId);
+  if (guestIds.length === 0) {
+    return 0;
+  }
+
+  if (confirm && !window.confirm(`Add ${guestIds.length} no-account favorites to the selected account?`)) {
+    return 0;
+  }
+
+  const accountIds = ensureFavoriteBucket(activeAccountId);
+  const mergedIds = normalizeFavoriteIds([...accountIds, ...guestIds]);
+  const addedCount = mergedIds.length - accountIds.length;
+  favoritesByAccount[activeAccountId] = mergedIds;
+  saveFavoriteSettings();
+  syncAllImageCards();
+  renderFavorites();
+  updateMergeGuestFavoritesAction();
+  if (addedCount > 0) {
+    setAccountStatus(`${addedCount} no-account favorites added to this account.`, "success");
+  }
+  return addedCount;
+}
+
+function toggleFavorite(imageId) {
+  const normalizedId = normalizeFavoriteId(imageId);
+  if (!normalizedId) {
+    return false;
+  }
+
+  const accountId = getFavoriteAccountId();
+  const favoriteIds = ensureFavoriteBucket(accountId);
+  const existingIndex = favoriteIds.indexOf(normalizedId);
+  const willFavorite = existingIndex === -1;
+  if (willFavorite) {
+    favoriteIds.push(normalizedId);
+  } else {
+    favoriteIds.splice(existingIndex, 1);
+  }
+
+  saveFavoriteSettings();
+  updateMergeGuestFavoritesAction();
+  return willFavorite;
+}
+
+function loadDownloadedRecords() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(downloadedRecordsKey) || "[]");
+    downloadedPostIds = new Set(normalizeFavoriteIds(saved));
+  } catch (error) {
+    console.warn("Failed to load download history.", error);
+    downloadedPostIds = new Set();
+  }
+}
+
+function saveDownloadedRecords() {
+  localStorage.setItem(downloadedRecordsKey, JSON.stringify([...downloadedPostIds]));
+}
+
+function hasDownloadedRecord(imageId) {
+  const normalizedId = normalizeFavoriteId(imageId);
+  return normalizedId ? downloadedPostIds.has(normalizedId) : false;
+}
+
+function addDownloadedRecord(imageId) {
+  const normalizedId = normalizeFavoriteId(imageId);
+  if (!normalizedId) {
+    return;
+  }
+
+  downloadedPostIds.add(normalizedId);
+  saveDownloadedRecords();
+  syncImageInstances(normalizedId);
+  if (activeDetailPost && getPostId(activeDetailPost) === normalizedId) {
+    renderDetail(activeDetailPost);
+  }
+}
+
+function removeDownloadedRecord(imageId) {
+  const normalizedId = normalizeFavoriteId(imageId);
+  if (!normalizedId) {
+    return;
+  }
+
+  downloadedPostIds.delete(normalizedId);
+  saveDownloadedRecords();
+  syncImageInstances(normalizedId);
+  if (activeDetailPost && getPostId(activeDetailPost) === normalizedId) {
+    renderDetail(activeDetailPost);
+  }
+}
+
+function clearDownloadedRecords() {
+  if (downloadedPostIds.size === 0) {
+    setAccountStatus("No downloaded records to clear.", "success");
+    return;
+  }
+
+  if (!window.confirm(`Clear ${downloadedPostIds.size} downloaded records? This will not delete local files.`)) {
+    return;
+  }
+
+  const affectedIds = [...downloadedPostIds];
+  downloadedPostIds.clear();
+  saveDownloadedRecords();
+  affectedIds.forEach(syncImageInstances);
+  if (activeDetailPost) {
+    renderDetail(activeDetailPost);
+  }
+  setAccountStatus("Downloaded records cleared.", "success");
 }
 
 function getDanbooruAuthHeaders() {
@@ -235,6 +485,9 @@ function setActiveAccount(accountId) {
   activeAccountId = accountId;
   saveAccountSettings();
   renderAccounts();
+  syncAllImageCards();
+  updateMergeGuestFavoritesAction();
+  renderFavorites();
   submitSearch(getSearchQuery(true), true);
 }
 
@@ -432,6 +685,21 @@ function addTag(tag) {
   tagInput.focus();
 }
 
+function addDetailTagToSearch(tag, className) {
+  const categoryName = className.replace(/^tag-/, "") || "general";
+  addTag({
+    label: tag,
+    value: tag,
+    categoryId: Number(Object.entries(categoryNames).find(([, name]) => name === categoryName)?.[0] || 0),
+    categoryName,
+    postCount: 0,
+  });
+  closeDetail();
+  showPage("search");
+  submitSearch(getSearchQuery(false), true);
+  showToast("Added tag to search");
+}
+
 function removeTag(value) {
   selectedTags = selectedTags.filter((tag) => tag.value !== value);
   renderSelectedTags();
@@ -597,9 +865,14 @@ function appendTagSection(parent, title, tags, className) {
   list.className = "detail-tag-list";
 
   values.forEach((tag) => {
-    const chip = document.createElement("span");
+    const chip = document.createElement("button");
     chip.className = `detail-tag ${className}`;
+    chip.type = "button";
     chip.textContent = tag;
+    chip.setAttribute("aria-label", `Add ${tag} to search`);
+    chip.addEventListener("click", () => {
+      addDetailTagToSearch(tag, className);
+    });
     list.append(chip);
   });
 
@@ -619,6 +892,7 @@ function downloadOriginal(post) {
   document.body.append(link);
   link.click();
   link.remove();
+  addDownloadedRecord(getPostId(post));
   return true;
 }
 
@@ -697,6 +971,45 @@ function reloadImagesForLoadingTarget(target) {
   }
 }
 
+function createDetailDownloadActions(post) {
+  const isDownloaded = hasDownloadedRecord(getPostId(post));
+
+  const downloadButton = document.createElement("button");
+  downloadButton.className = "detail-download-button";
+  downloadButton.type = "button";
+  downloadButton.textContent = "Download original";
+  downloadButton.disabled = !post.file_url;
+  downloadButton.addEventListener("click", () => {
+    downloadOriginal(post);
+  });
+
+  if (!isDownloaded) {
+    return downloadButton;
+  }
+
+  const actions = document.createElement("div");
+  actions.className = "detail-download-actions";
+
+  const removeRecordButton = document.createElement("button");
+  removeRecordButton.className = "detail-download-record-button";
+  removeRecordButton.type = "button";
+  removeRecordButton.setAttribute("aria-label", `Remove downloaded record for ${getPostLabel(post)}`);
+
+  const removeIcon = document.createElement("span");
+  removeIcon.className = "action-icon icon-x";
+  removeIcon.setAttribute("aria-hidden", "true");
+
+  const removeLabel = document.createElement("span");
+  removeLabel.textContent = "Delete record";
+  removeRecordButton.append(removeIcon, removeLabel);
+  removeRecordButton.addEventListener("click", () => {
+    removeDownloadedRecord(getPostId(post));
+  });
+
+  actions.append(downloadButton, removeRecordButton);
+  return actions;
+}
+
 function renderDetail(post) {
   detailContent.innerHTML = "";
 
@@ -722,14 +1035,7 @@ function renderDetail(post) {
     imageWrap.append(image);
   }
 
-  const downloadButton = document.createElement("button");
-  downloadButton.className = "detail-download-button";
-  downloadButton.type = "button";
-  downloadButton.textContent = "Download original";
-  downloadButton.disabled = !post.file_url;
-  downloadButton.addEventListener("click", () => {
-    downloadOriginal(post);
-  });
+  const downloadActions = createDetailDownloadActions(post);
 
   const info = document.createElement("dl");
   info.className = "detail-info";
@@ -748,10 +1054,11 @@ function renderDetail(post) {
   appendTagSection(tagSections, "General", post.tag_string_general, "tag-general");
   appendTagSection(tagSections, "Meta", post.tag_string_meta, "tag-meta");
 
-  detailContent.append(imageWrap, downloadButton, info, tagSections);
+  detailContent.append(imageWrap, downloadActions, info, tagSections);
 }
 
 function openDetail(post) {
+  activeDetailPost = post;
   renderDetail(post);
   detailBackdrop.hidden = false;
   document.body.classList.add("detail-open");
@@ -762,6 +1069,7 @@ function openDetail(post) {
 }
 
 function closeDetail() {
+  activeDetailPost = null;
   detailPanel.classList.remove("open");
   detailPanel.setAttribute("aria-hidden", "true");
   detailBackdrop.hidden = true;
@@ -776,6 +1084,12 @@ navButtons.forEach((button) => {
 refreshPageButton?.addEventListener("click", () => {
   saveSearchSession();
   window.location.reload();
+});
+
+themeOptionButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    setTheme(button.dataset.themeOption);
+  });
 });
 
 loadingModeButtons.forEach((button) => {
@@ -815,6 +1129,22 @@ accountList?.addEventListener("click", (event) => {
   if (deleteButton && !deleteButton.hidden) {
     removeAccount(deleteButton.dataset.accountId);
   }
+});
+
+mergeGuestFavoritesButton?.addEventListener("click", () => {
+  mergeGuestFavoritesToActiveAccount({ confirm: true });
+});
+
+clearDownloadHistoryButton?.addEventListener("click", clearDownloadedRecords);
+
+exportFavoritesButton?.addEventListener("click", exportCurrentFavorites);
+
+importFavoritesButton?.addEventListener("click", () => {
+  favoritesFileInput?.click();
+});
+
+favoritesFileInput?.addEventListener("change", () => {
+  importFavoritesFile(favoritesFileInput.files?.[0]);
 });
 
 ratingFilterButton?.addEventListener("click", (event) => {
@@ -952,8 +1282,10 @@ function syncImageCardControls(card, post) {
   const favoriteIcon = card.querySelector(".favorite-icon");
   const selectButton = card.querySelector(".select-button");
   const selectIcon = card.querySelector(".select-button .image-action-icon");
-  const isLiked = likedImages.has(imageId);
+  const downloadedIndicator = card.querySelector(".downloaded-indicator");
+  const isLiked = hasFavorite(imageId);
   const isSelected = selectedImages.has(imageId);
+  const isDownloaded = hasDownloadedRecord(imageId);
 
   if (favoriteButton && favoriteIcon) {
     favoriteButton.classList.toggle("liked", isLiked);
@@ -967,6 +1299,11 @@ function syncImageCardControls(card, post) {
     selectIcon.src = isSelected ? "/icons/square-check-filled.svg" : "/icons/square.svg";
     selectButton.setAttribute("aria-pressed", String(isSelected));
     selectButton.setAttribute("aria-label", `${isSelected ? "Unselect" : "Select"} ${getPostLabel(post)}`);
+  }
+
+  if (downloadedIndicator) {
+    downloadedIndicator.classList.toggle("downloaded", isDownloaded);
+    downloadedIndicator.hidden = !isDownloaded;
   }
 }
 
@@ -1005,6 +1342,144 @@ function downloadSelectedOriginals() {
       downloadOriginal(post);
     }, index * 120);
   });
+}
+
+async function copyTextToClipboard(text) {
+  if (!text) {
+    return false;
+  }
+
+  if (navigator.clipboard?.writeText && window.isSecureContext) {
+    await navigator.clipboard.writeText(text);
+    return true;
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.left = "-9999px";
+  textarea.style.position = "fixed";
+  textarea.style.top = "0";
+  document.body.append(textarea);
+  textarea.focus();
+  textarea.select();
+  const copied = document.execCommand("copy");
+  textarea.remove();
+  return copied;
+}
+
+function showShareCopiedState(button, post) {
+  button.classList.add("copied");
+  button.setAttribute("aria-label", `Original link copied for ${getPostLabel(post)}`);
+  window.setTimeout(() => {
+    button.classList.remove("copied");
+    button.setAttribute("aria-label", `Copy original link for ${getPostLabel(post)}`);
+  }, 1200);
+}
+
+function showToast(message) {
+  if (!toast) {
+    return;
+  }
+
+  window.clearTimeout(toastTimer);
+  toast.textContent = message;
+  toast.hidden = false;
+  requestAnimationFrame(() => {
+    toast.classList.add("show");
+  });
+  toastTimer = window.setTimeout(() => {
+    toast.classList.remove("show");
+    toastTimer = window.setTimeout(() => {
+      toast.hidden = true;
+      toast.textContent = "";
+    }, 180);
+  }, 1400);
+}
+
+function getFavoriteExportAccountLabel() {
+  const account = getActiveAccount();
+  return account?.username || "No account";
+}
+
+function getSafeFileSegment(value) {
+  return String(value || "favorites").replace(/[^a-z0-9_-]+/gi, "-").replace(/^-+|-+$/g, "") || "favorites";
+}
+
+function exportCurrentFavorites() {
+  const postIds = getCurrentFavoriteIds();
+  const payload = {
+    version: 1,
+    exported_at: new Date().toISOString(),
+    account: getFavoriteExportAccountLabel(),
+    post_ids: postIds,
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {
+    type: "application/json",
+  });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  const accountSegment = getFavoriteAccountId() === guestFavoriteAccountId ? "no-account" : getSafeFileSegment(getFavoriteExportAccountLabel());
+  link.download = `danbooru-favorites-${accountSegment}-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.append(link);
+  link.click();
+  URL.revokeObjectURL(link.href);
+  link.remove();
+  setFavoritesStatus(`${postIds.length} favorite IDs exported.`);
+}
+
+function getFavoriteIdsFromImport(payload) {
+  if (Array.isArray(payload)) {
+    return normalizeFavoriteIds(payload);
+  }
+
+  if (!payload || typeof payload !== "object") {
+    return [];
+  }
+
+  if (Array.isArray(payload.post_ids)) {
+    return normalizeFavoriteIds(payload.post_ids);
+  }
+
+  if (Array.isArray(payload.postIds)) {
+    return normalizeFavoriteIds(payload.postIds);
+  }
+
+  if (payload.favorites_by_account && typeof payload.favorites_by_account === "object") {
+    return normalizeFavoriteIds(Object.values(payload.favorites_by_account).flat());
+  }
+
+  return [];
+}
+
+async function importFavoritesFile(file) {
+  if (!file) {
+    return;
+  }
+
+  try {
+    const payload = JSON.parse(await file.text());
+    const importedIds = getFavoriteIdsFromImport(payload);
+    if (importedIds.length === 0) {
+      throw new Error("No favorite IDs found in this file.");
+    }
+
+    const accountId = getFavoriteAccountId();
+    const previousIds = ensureFavoriteBucket(accountId);
+    const mergedIds = normalizeFavoriteIds([...previousIds, ...importedIds]);
+    favoritesByAccount[accountId] = mergedIds;
+    saveFavoriteSettings();
+    syncAllImageCards();
+    renderFavorites();
+    updateMergeGuestFavoritesAction();
+    setFavoritesStatus(`${mergedIds.length - previousIds.length} new favorite IDs imported.`);
+  } catch (error) {
+    setFavoritesStatus(`Import failed: ${error.message}`);
+  } finally {
+    if (favoritesFileInput) {
+      favoritesFileInput.value = "";
+    }
+  }
 }
 
 async function addAccount() {
@@ -1060,7 +1535,14 @@ async function addAccount() {
     renderAccounts();
     accountUsernameInput.value = "";
     accountApiKeyInput.value = "";
-    setAccountStatus("Account added.", "success");
+    updateMergeGuestFavoritesAction();
+    let mergedGuestCount = 0;
+    if (ensureFavoriteBucket(guestFavoriteAccountId).length > 0) {
+      mergedGuestCount = mergeGuestFavoritesToActiveAccount({ confirm: true });
+    }
+    if (mergedGuestCount === 0) {
+      setAccountStatus("Account added.", "success");
+    }
     submitSearch(getSearchQuery(true), true);
   } catch (error) {
     setAccountStatus(error.message, "error");
@@ -1080,11 +1562,15 @@ function removeAccount(accountId) {
   }
 
   savedAccounts = savedAccounts.filter((item) => item.id !== accountId);
+  delete favoritesByAccount[accountId];
   if (activeAccountId === accountId) {
     activeAccountId = "";
   }
   saveAccountSettings();
+  saveFavoriteSettings();
   renderAccounts();
+  syncAllImageCards();
+  updateMergeGuestFavoritesAction();
   setAccountStatus("Account removed.", "success");
   submitSearch(getSearchQuery(true), true);
 }
@@ -1137,7 +1623,8 @@ function createImageCard(post) {
   const shareButton = document.createElement("button");
   shareButton.className = "image-action-button share-button";
   shareButton.type = "button";
-  shareButton.setAttribute("aria-label", `Share ${getPostLabel(post)}`);
+  shareButton.disabled = !post.file_url;
+  shareButton.setAttribute("aria-label", `Copy original link for ${getPostLabel(post)}`);
 
   const shareIcon = document.createElement("img");
   shareIcon.className = "image-action-icon";
@@ -1159,17 +1646,25 @@ function createImageCard(post) {
   selectIcon.setAttribute("aria-hidden", "true");
   selectButton.append(selectIcon);
 
-  overlayActions.append(favoriteButton, shareButton, selectButton);
+  const downloadedIndicator = document.createElement("div");
+  downloadedIndicator.className = "image-action-button downloaded-indicator";
+  downloadedIndicator.hidden = true;
+  downloadedIndicator.setAttribute("aria-label", `${getPostLabel(post)} downloaded`);
+
+  const downloadedIcon = document.createElement("span");
+  downloadedIcon.className = "action-icon icon-download";
+  downloadedIcon.setAttribute("aria-hidden", "true");
+
+  const downloadedLabel = document.createElement("span");
+  downloadedLabel.textContent = "downloaded";
+  downloadedIndicator.append(downloadedIcon, downloadedLabel);
+
+  overlayActions.append(favoriteButton, shareButton, selectButton, downloadedIndicator);
   card.append(overlayActions);
 
   favoriteButton.addEventListener("click", (event) => {
     event.stopPropagation();
-    const isLiked = likedImages.has(imageId);
-    if (isLiked) {
-      likedImages.delete(imageId);
-    } else {
-      likedImages.add(imageId);
-    }
+    const isLiked = !toggleFavorite(imageId);
 
     favoriteButton.classList.toggle("liked", !isLiked);
     favoriteIcon.src = isLiked ? "/icons/heart.svg" : "/icons/heart-filled.svg";
@@ -1184,8 +1679,19 @@ function createImageCard(post) {
   favoriteButton.addEventListener("keydown", (event) => {
     event.stopPropagation();
   });
-  shareButton.addEventListener("click", (event) => {
+  shareButton.addEventListener("click", async (event) => {
     event.stopPropagation();
+    try {
+      const copied = await copyTextToClipboard(post.file_url);
+      if (!copied) {
+        throw new Error("Clipboard copy was blocked.");
+      }
+      showShareCopiedState(shareButton, post);
+      showToast("Copied");
+    } catch (error) {
+      console.warn("Failed to copy original link.", error);
+      shareButton.setAttribute("aria-label", `Could not copy original link for ${getPostLabel(post)}`);
+    }
   });
   shareButton.addEventListener("keydown", (event) => {
     event.stopPropagation();
@@ -1370,20 +1876,71 @@ function appendPostPage(container, posts, pageNumber) {
   container.append(page, createPageDivider(pageNumber));
 }
 
-function renderFavorites() {
+async function loadFavoritePost(imageId) {
+  const cached = imageStore.get(imageId);
+  if (cached) {
+    return cached;
+  }
+
+  const response = await fetch(`/api/posts/${encodeURIComponent(imageId)}`, {
+    headers: getDanbooruAuthHeaders(),
+  });
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(payload.message || payload.error || `HTTP ${response.status}`);
+  }
+
+  if (payload.body?.id) {
+    imageStore.set(getPostId(payload.body), payload.body);
+    return payload.body;
+  }
+
+  return null;
+}
+
+async function renderFavorites() {
   if (!favoritesStream || !favoritesEmpty) {
     return;
   }
 
+  const requestId = favoriteRenderRequestId + 1;
+  favoriteRenderRequestId = requestId;
   favoritesStream.innerHTML = "";
-  const favoritePosts = [...likedImages].map((id) => imageStore.get(id)).filter(Boolean);
-  favoritesEmpty.hidden = favoritePosts.length > 0;
+  const favoriteIds = getCurrentFavoriteIds();
+  favoritesEmpty.hidden = favoriteIds.length > 0;
+  setFavoritesStatus("");
 
-  if (favoritePosts.length === 0) {
+  if (favoriteIds.length === 0) {
     return;
   }
 
-  appendPostPage(favoritesStream, favoritePosts, 1);
+  setFavoritesStatus("Loading favorites...");
+  const favoritePosts = [];
+  let failedCount = 0;
+
+  for (const imageId of favoriteIds) {
+    try {
+      const post = await loadFavoritePost(imageId);
+      if (post) {
+        favoritePosts.push(post);
+      }
+    } catch (error) {
+      console.warn(`Failed to load favorite ${imageId}.`, error);
+      failedCount += 1;
+    }
+
+    if (requestId !== favoriteRenderRequestId) {
+      return;
+    }
+  }
+
+  favoritesStream.innerHTML = "";
+  favoritesEmpty.hidden = favoritePosts.length > 0;
+  if (favoritePosts.length > 0) {
+    appendPostPage(favoritesStream, favoritePosts, 1);
+  }
+
+  setFavoritesStatus(failedCount > 0 ? `${failedCount} favorites could not be loaded.` : "");
 }
 
 closeDetailButton?.addEventListener("click", closeDetail);
@@ -1402,10 +1959,15 @@ window.addEventListener("keydown", (event) => {
 
 window.addEventListener("beforeunload", saveSearchSession);
 
+loadThemeSetting();
 loadImageSettings();
 loadAccountSettings();
+loadFavoriteSettings();
+loadDownloadedRecords();
+renderThemeSettings();
 renderLoadingSettings();
 renderAccounts();
+updateMergeGuestFavoritesAction();
 loadLanguage();
 showPage("search");
 updateSelectionActions();
