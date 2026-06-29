@@ -25,8 +25,10 @@
   --card-shadow: 0 8px 22px rgba(31, 41, 55, 0.1);
   --card-hover-shadow: 0 12px 28px rgba(31, 41, 55, 0.14);
   --image-action-bg: rgba(255, 255, 255, 0.92);
+  --image-action-hover-bg: #ffffff;
   --image-action-border: rgba(226, 231, 238, 0.9);
   --image-action-shadow: 0 8px 18px rgba(31, 41, 55, 0.12);
+  --image-action-icon-filter: none;
   --selection-bg: rgba(255, 255, 255, 0.94);
   --selection-border: #e6eaf1;
   --selection-shadow: 0 16px 42px rgba(28, 36, 48, 0.16);
@@ -82,9 +84,11 @@
   --card-bg: linear-gradient(145deg, #15161c, #101115);
   --card-shadow: 0 12px 28px rgba(0, 0, 0, 0.34);
   --card-hover-shadow: 0 18px 38px rgba(0, 0, 0, 0.42);
-  --image-action-bg: rgba(18, 19, 24, 0.88);
-  --image-action-border: rgba(221, 228, 240, 0.18);
-  --image-action-shadow: 0 10px 22px rgba(0, 0, 0, 0.36);
+  --image-action-bg: rgba(255, 255, 255, 0.18);
+  --image-action-hover-bg: rgba(255, 255, 255, 0.28);
+  --image-action-border: rgba(255, 255, 255, 0.42);
+  --image-action-shadow: 0 10px 22px rgba(0, 0, 0, 0.32);
+  --image-action-icon-filter: brightness(0) invert(1);
   --selection-bg: rgba(17, 18, 23, 0.96);
   --selection-border: rgba(221, 228, 240, 0.22);
   --selection-shadow: 0 18px 46px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.05);
@@ -461,13 +465,15 @@ button {
   color: var(--accent);
 }
 
-.account-settings-row {
+.account-settings-row,
+.blacklist-settings-row {
   align-items: start;
   grid-template-columns: minmax(180px, 0.85fr) minmax(520px, 1.2fr);
   padding-right: 34px;
 }
 
-.account-login-panel {
+.account-login-panel,
+.blacklist-panel {
   display: grid;
   gap: 10px;
   justify-self: stretch;
@@ -672,6 +678,161 @@ button {
   display: block;
   height: 19px;
   width: 19px;
+}
+
+.blacklist-tag-search {
+  color: var(--muted);
+  position: relative;
+}
+
+.blacklist-input-shell {
+  align-items: center;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  cursor: text;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  min-height: 46px;
+  padding: 6px 7px 6px 10px;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.blacklist-tag-search.focused .blacklist-input-shell {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px var(--focus-ring);
+}
+
+.blacklist-selected-tags {
+  display: contents;
+}
+
+.blacklist-tag-input {
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  flex: 1 1 150px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  min-height: 32px;
+  min-width: 120px;
+  outline: 0;
+  padding: 4px;
+}
+
+.blacklist-tag-input::placeholder {
+  color: var(--muted);
+}
+
+.blacklist-add-button {
+  background: var(--accent-soft);
+  color: var(--accent);
+  flex: 0 0 auto;
+  height: 34px;
+  width: 34px;
+}
+
+.blacklist-add-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.blacklist-suggestions-panel {
+  margin-top: 6px;
+}
+
+.blacklist-status {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  min-height: 17px;
+  margin: 0;
+}
+
+.blacklist-status.error {
+  color: #d94961;
+}
+
+.blacklist-status.success {
+  color: var(--green);
+}
+
+.blacklist-list {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  display: grid;
+  max-height: 224px;
+  max-width: 100%;
+  overflow: auto;
+  width: 100%;
+}
+
+.blacklist-empty,
+.blacklist-rule-row {
+  background: var(--surface-2);
+  color: var(--text);
+  min-width: 0;
+}
+
+.blacklist-empty {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  font-size: 13px;
+  font-weight: 700;
+  min-height: 42px;
+  padding: 0 12px;
+}
+
+.blacklist-rule-row {
+  align-items: center;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) 32px;
+  min-height: 48px;
+  padding: 8px 8px 8px 12px;
+}
+
+.blacklist-rule-row + .blacklist-rule-row {
+  border-top: 1px solid var(--line);
+}
+
+.blacklist-rule-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.blacklist-rule-chip {
+  align-items: center;
+  border-radius: 999px;
+  color: var(--text);
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 740;
+  min-height: 28px;
+  min-width: 0;
+  padding: 0 10px;
+}
+
+.blacklist-delete-button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: var(--icon);
+  cursor: pointer;
+  display: inline-flex;
+  height: 30px;
+  justify-content: center;
+  padding: 0;
+  width: 30px;
+}
+
+.blacklist-delete-button:hover {
+  color: #d94961;
 }
 
 .tag-search {
@@ -1194,7 +1355,7 @@ button {
 }
 
 .image-action-button:hover {
-  background: var(--surface-3);
+  background: var(--image-action-hover-bg);
   border-color: var(--accent);
   color: var(--accent);
 }
@@ -1239,14 +1400,25 @@ button {
 
 .favorite-icon {
   display: block;
+  filter: var(--image-action-icon-filter);
   height: 21px;
   width: 21px;
 }
 
 .image-action-icon {
   display: block;
+  filter: var(--image-action-icon-filter);
   height: 20px;
   width: 20px;
+}
+
+:root[data-theme="dark"] .favorite-button.liked .favorite-icon {
+  filter: none;
+}
+
+:root[data-theme="dark"] .favorite-button:not(.liked) .favorite-icon,
+:root[data-theme="dark"] .select-button .image-action-icon {
+  filter: brightness(0) saturate(100%);
 }
 
 .placeholder-short {
@@ -1720,12 +1892,14 @@ button {
     justify-self: stretch;
   }
 
-  .account-login-panel {
+  .account-login-panel,
+  .blacklist-panel {
     max-width: none;
     min-width: 0;
   }
 
-  .account-settings-row {
+  .account-settings-row,
+  .blacklist-settings-row {
     padding-right: 18px;
   }
 

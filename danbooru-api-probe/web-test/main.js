@@ -35,8 +35,18 @@ const addAccountButton = document.querySelector("#add-account");
 const accountStatus = document.querySelector("#account-status");
 const accountList = document.querySelector("#account-list");
 const mergeGuestFavoritesButton = document.querySelector("#merge-guest-favorites");
+const blacklistTagSearch = document.querySelector("#blacklist-tag-search");
+const blacklistInputShell = document.querySelector("#blacklist-input-shell");
+const blacklistSelectedTagsEl = document.querySelector("#blacklist-selected-tags");
+const blacklistTagInput = document.querySelector("#blacklist-tag-input");
+const addBlacklistRuleButton = document.querySelector("#add-blacklist-rule");
+const blacklistSuggestionsPanel = document.querySelector("#blacklist-suggestions-panel");
+const blacklistSuggestionsList = document.querySelector("#blacklist-suggestions-list");
+const blacklistStatus = document.querySelector("#blacklist-status");
+const blacklistList = document.querySelector("#blacklist-list");
 const clearDownloadHistoryButton = document.querySelector("#clear-download-history");
 const themeOptionButtons = [...document.querySelectorAll("[data-theme-option]")];
+const languageOptionButtons = [...document.querySelectorAll("[data-language-option]")];
 const loadingModeButtons = [...document.querySelectorAll("[data-loading-target][data-loading-mode]")];
 const detailBackdrop = document.querySelector("#detail-backdrop");
 const detailPanel = document.querySelector("#detail-panel");
@@ -56,6 +66,11 @@ let suggestions = [];
 let activeSuggestionIndex = -1;
 let autocompleteController;
 let autocompleteRequestId = 0;
+let blacklistDraftTags = [];
+let blacklistSuggestions = [];
+let activeBlacklistSuggestionIndex = -1;
+let blacklistAutocompleteController;
+let blacklistAutocompleteRequestId = 0;
 const selectedImages = new Set();
 const imageStore = new Map();
 const postsPerPage = 20;
@@ -69,13 +84,17 @@ let autoSearchTimer;
 let lastSubmittedSearchTags = "";
 let activeRating = "";
 let activeTheme = "light";
+let activeLanguage = "en";
+let currentDictionary = {};
 const searchSessionKey = "danbooruDownloader.searchSession";
 const themeSettingsKey = "danbooruDownloader.theme";
+const languageSettingsKey = "danbooruDownloader.language";
 const loadingSettingsKey = "danbooruDownloader.loadingSettings";
 const accountSettingsKey = "danbooruDownloader.accounts";
 const activeAccountKey = "danbooruDownloader.activeAccountId";
 const favoritesSettingsKey = "danbooruDownloader.favoritesByAccount";
 const downloadedRecordsKey = "danbooruDownloader.downloadedPostIds";
+const blacklistSettingsKey = "danbooruDownloader.blacklistRules";
 const guestFavoriteAccountId = "__guest__";
 const loadingSettings = {
   thumbnail: "auto",
@@ -85,6 +104,7 @@ let savedAccounts = [];
 let activeAccountId = "";
 let favoritesByAccount = {};
 let downloadedPostIds = new Set();
+let blacklistRules = [];
 let favoriteRenderRequestId = 0;
 let activeDetailPost = null;
 let toastTimer;
@@ -109,8 +129,37 @@ function getNestedValue(source, path) {
   return path.split(".").reduce((value, key) => value?.[key], source);
 }
 
+function formatTemplate(template, values = {}) {
+  return String(template).replace(/\{(\w+)\}/g, (_, key) => values[key] ?? "");
+}
+
+function t(path, fallback = "", values = {}) {
+  return formatTemplate(getNestedValue(currentDictionary, path) || fallback, values);
+}
+
 function isLoadingMode(value) {
   return value === "auto" || value === "direct" || value === "proxy";
+}
+
+function isLanguageMode(value) {
+  return value === "en" || value === "zh";
+}
+
+function loadLanguageSetting() {
+  const saved = localStorage.getItem(languageSettingsKey);
+  activeLanguage = isLanguageMode(saved) ? saved : "en";
+}
+
+function saveLanguageSetting() {
+  localStorage.setItem(languageSettingsKey, activeLanguage);
+}
+
+function renderLanguageSettings() {
+  languageOptionButtons.forEach((button) => {
+    const isActive = button.dataset.languageOption === activeLanguage;
+    button.classList.toggle("active", isActive);
+    button.setAttribute("aria-pressed", String(isActive));
+  });
 }
 
 function isThemeMode(value) {
@@ -264,6 +313,358 @@ function setFavoritesStatus(message = "") {
   }
 }
 
+function setFavoritesEmptyMessage(path = "favorites.empty", fallback = "No favorite images yet.") {
+  if (!favoritesEmpty) {
+    return;
+  }
+
+  favoritesEmpty.dataset.i18n = path;
+  favoritesEmpty.textContent = t(path, fallback);
+}
+
+function setBlacklistStatus(message = "", type = "") {
+  if (!blacklistStatus) {
+    return;
+  }
+
+  blacklistStatus.textContent = message;
+  blacklistStatus.classList.toggle("error", type === "error");
+  blacklistStatus.classList.toggle("success", type === "success");
+}
+
+function normalizeBlacklistTag(tag) {
+  const rawValue = typeof tag === "string" ? tag : tag?.value || tag?.label || "";
+  const value = String(rawValue).trim().replace(/\s+/g, "_");
+  if (!value) {
+    return null;
+  }
+
+  const categoryId = Number(tag?.categoryId ?? tag?.category ?? 0);
+  const categoryName = tag?.categoryName || categoryNames[categoryId] || "general";
+  return {
+    label: tag?.label || value,
+    value,
+    categoryId: Number.isFinite(categoryId) ? categoryId : 0,
+    categoryName,
+  };
+}
+
+function normalizeBlacklistRules(value) {
+  const rules = Array.isArray(value) ? value : [];
+  return rules
+    .map((rule) => {
+      const tags = (Array.isArray(rule?.tags) ? rule.tags : [])
+        .map(normalizeBlacklistTag)
+        .filter(Boolean);
+      const dedupedTags = [...new Map(tags.map((tag) => [tag.value, tag])).values()];
+      if (dedupedTags.length === 0) {
+        return null;
+      }
+
+      return {
+        id: rule?.id || `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        tags: dedupedTags,
+      };
+    })
+    .filter(Boolean);
+}
+
+function loadBlacklistSettings() {
+  try {
+    blacklistRules = normalizeBlacklistRules(JSON.parse(localStorage.getItem(blacklistSettingsKey) || "[]"));
+  } catch (error) {
+    console.warn("Failed to load blacklist settings.", error);
+    blacklistRules = [];
+  }
+}
+
+function saveBlacklistSettings() {
+  blacklistRules = normalizeBlacklistRules(blacklistRules);
+  localStorage.setItem(blacklistSettingsKey, JSON.stringify(blacklistRules));
+}
+
+function getBlacklistRuleSignature(tags) {
+  return tags.map((tag) => tag.value).sort().join("\n");
+}
+
+function updateBlacklistAddButton() {
+  if (!addBlacklistRuleButton) {
+    return;
+  }
+
+  addBlacklistRuleButton.disabled = blacklistDraftTags.length === 0 && !blacklistTagInput?.value.trim();
+}
+
+function renderBlacklistDraftTags() {
+  if (!blacklistSelectedTagsEl) {
+    return;
+  }
+
+  blacklistSelectedTagsEl.innerHTML = "";
+  blacklistDraftTags.forEach((tag) => {
+    const tagEl = document.createElement("button");
+    tagEl.className = `tag-chip blacklist-draft-chip tag-${tag.categoryName}`;
+    tagEl.type = "button";
+    tagEl.dataset.value = tag.value;
+    tagEl.setAttribute("aria-label", `Remove ${tag.label}`);
+
+    const label = document.createElement("span");
+    label.textContent = tag.label;
+
+    const removeIcon = document.createElement("span");
+    removeIcon.className = "chip-remove icon-x";
+    removeIcon.setAttribute("aria-hidden", "true");
+
+    tagEl.append(label, removeIcon);
+    blacklistSelectedTagsEl.append(tagEl);
+  });
+  updateBlacklistAddButton();
+}
+
+function renderBlacklistSuggestions() {
+  if (!blacklistSuggestionsList || !blacklistSuggestionsPanel) {
+    return;
+  }
+
+  blacklistSuggestionsList.innerHTML = "";
+  if (blacklistSuggestions.length === 0) {
+    blacklistSuggestionsPanel.hidden = true;
+    return;
+  }
+
+  blacklistSuggestions.forEach((suggestion, index) => {
+    const button = document.createElement("button");
+    button.className = `suggestion-item tag-${suggestion.categoryName}`;
+    button.type = "button";
+    button.dataset.index = String(index);
+    button.setAttribute("role", "option");
+    button.setAttribute("aria-selected", index === activeBlacklistSuggestionIndex ? "true" : "false");
+
+    const label = document.createElement("span");
+    label.className = "suggestion-label";
+    label.textContent = suggestion.label;
+
+    const category = document.createElement("span");
+    category.className = "suggestion-category";
+    category.textContent = getCategoryDisplayName(suggestion.categoryName);
+
+    const count = document.createElement("span");
+    count.className = "suggestion-count";
+    count.textContent = formatPostCount(suggestion.postCount);
+
+    button.append(label, category, count);
+    blacklistSuggestionsList.append(button);
+  });
+
+  blacklistSuggestionsPanel.hidden = false;
+}
+
+function addBlacklistDraftTag(tag) {
+  const normalizedTag = normalizeBlacklistTag(tag);
+  if (!normalizedTag) {
+    return;
+  }
+
+  if (!blacklistDraftTags.some((selected) => selected.value === normalizedTag.value)) {
+    blacklistDraftTags = [...blacklistDraftTags, normalizedTag];
+  }
+
+  if (blacklistTagInput) {
+    blacklistTagInput.value = "";
+  }
+  blacklistSuggestions = [];
+  activeBlacklistSuggestionIndex = -1;
+  renderBlacklistDraftTags();
+  renderBlacklistSuggestions();
+  blacklistTagInput?.focus();
+}
+
+function addRawBlacklistTagFromInput() {
+  const value = normalizeManualTagValue(blacklistTagInput?.value);
+  if (!value) {
+    return;
+  }
+
+  addBlacklistDraftTag({
+    label: value,
+    value,
+    categoryId: 0,
+    categoryName: "general",
+    postCount: 0,
+  });
+}
+
+function removeBlacklistDraftTag(value) {
+  blacklistDraftTags = blacklistDraftTags.filter((tag) => tag.value !== value);
+  renderBlacklistDraftTags();
+  blacklistTagInput?.focus();
+}
+
+async function loadBlacklistSuggestions(query) {
+  const trimmed = query.trim();
+  blacklistAutocompleteController?.abort();
+
+  if (trimmed.length < 2) {
+    blacklistSuggestions = [];
+    activeBlacklistSuggestionIndex = -1;
+    renderBlacklistSuggestions();
+    return;
+  }
+
+  const requestId = ++blacklistAutocompleteRequestId;
+  blacklistAutocompleteController = new AbortController();
+  const params = new URLSearchParams({
+    "search[query]": trimmed,
+    "search[type]": "tag_query",
+    limit: "12",
+  });
+
+  try {
+    const response = await fetch(`/api/autocomplete?${params}`, {
+      signal: blacklistAutocompleteController.signal,
+      headers: getDanbooruAuthHeaders(),
+    });
+    const payload = await response.json();
+    if (requestId !== blacklistAutocompleteRequestId) {
+      return;
+    }
+
+    const items = Array.isArray(payload.body) ? payload.body : [];
+    blacklistSuggestions = items.map(normalizeSuggestion).filter((item) => item.label && item.value);
+    activeBlacklistSuggestionIndex = blacklistSuggestions.length > 0 ? 0 : -1;
+    renderBlacklistSuggestions();
+  } catch (error) {
+    if (error.name !== "AbortError") {
+      console.warn("Blacklist autocomplete request failed.", error);
+    }
+  }
+}
+
+function getPostTagSet(post) {
+  return new Set([
+    ...splitTags(post.tag_string),
+    ...splitTags(post.tag_string_artist),
+    ...splitTags(post.tag_string_character),
+    ...splitTags(post.tag_string_copyright),
+    ...splitTags(post.tag_string_general),
+    ...splitTags(post.tag_string_meta),
+  ]);
+}
+
+function isPostBlocked(post) {
+  if (blacklistRules.length === 0) {
+    return false;
+  }
+
+  const postTags = getPostTagSet(post);
+  return blacklistRules.some((rule) => (
+    rule.tags.length > 0 && rule.tags.every((tag) => postTags.has(tag.value))
+  ));
+}
+
+function filterBlockedPosts(posts) {
+  return posts.filter((post) => !isPostBlocked(post));
+}
+
+function refreshContentAfterBlacklistChange() {
+  submitSearch(getSearchQuery(true), true);
+  renderFavorites();
+  if (activeDetailPost && isPostBlocked(activeDetailPost)) {
+    closeDetail();
+  }
+}
+
+function addBlacklistRule() {
+  if (blacklistTagInput?.value.trim()) {
+    addRawBlacklistTagFromInput();
+  }
+
+  const tags = blacklistDraftTags.map(normalizeBlacklistTag).filter(Boolean);
+  if (tags.length === 0) {
+    setBlacklistStatus(t("blacklist.tagRequired", "Add at least one tag first."), "error");
+    return;
+  }
+
+  const signature = getBlacklistRuleSignature(tags);
+  if (blacklistRules.some((rule) => getBlacklistRuleSignature(rule.tags) === signature)) {
+    setBlacklistStatus(t("blacklist.duplicate", "This blacklist rule already exists."), "error");
+    return;
+  }
+
+  blacklistRules = [...blacklistRules, {
+    id: globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    tags,
+  }];
+  blacklistDraftTags = [];
+  saveBlacklistSettings();
+  renderBlacklistDraftTags();
+  renderBlacklistRules();
+  setBlacklistStatus(t("blacklist.added", "Blacklist rule added."), "success");
+  refreshContentAfterBlacklistChange();
+}
+
+function removeBlacklistRule(ruleId) {
+  const rule = blacklistRules.find((item) => item.id === ruleId);
+  if (!rule) {
+    return;
+  }
+
+  const label = rule.tags.map((tag) => tag.label).join(" + ");
+  if (!window.confirm(t("blacklist.removeConfirm", "Remove blacklist rule \"{label}\"?", { label }))) {
+    return;
+  }
+
+  blacklistRules = blacklistRules.filter((item) => item.id !== ruleId);
+  saveBlacklistSettings();
+  renderBlacklistRules();
+  setBlacklistStatus(t("blacklist.removed", "Blacklist rule removed."), "success");
+  refreshContentAfterBlacklistChange();
+}
+
+function renderBlacklistRules() {
+  if (!blacklistList) {
+    return;
+  }
+
+  blacklistList.innerHTML = "";
+  if (blacklistRules.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "blacklist-empty";
+    empty.textContent = t("blacklist.empty", "No blacklist rules yet.");
+    blacklistList.append(empty);
+    return;
+  }
+
+  blacklistRules.forEach((rule) => {
+    const row = document.createElement("div");
+    row.className = "blacklist-rule-row";
+    row.dataset.ruleId = rule.id;
+
+    const tags = document.createElement("div");
+    tags.className = "blacklist-rule-tags";
+    rule.tags.forEach((tag) => {
+      const chip = document.createElement("span");
+      chip.className = `blacklist-rule-chip tag-${tag.categoryName}`;
+      chip.textContent = tag.label;
+      tags.append(chip);
+    });
+
+    const deleteButton = document.createElement("button");
+    deleteButton.className = "blacklist-delete-button";
+    deleteButton.type = "button";
+    deleteButton.dataset.ruleId = rule.id;
+    deleteButton.setAttribute("aria-label", `Remove ${rule.tags.map((tag) => tag.label).join(" + ")}`);
+
+    const deleteIcon = document.createElement("span");
+    deleteIcon.className = "action-icon icon-minus";
+    deleteIcon.setAttribute("aria-hidden", "true");
+    deleteButton.append(deleteIcon);
+
+    row.append(tags, deleteButton);
+    blacklistList.append(row);
+  });
+}
+
 function syncAllImageCards() {
   document.querySelectorAll(".image-card").forEach((card) => {
     const post = imageStore.get(card.dataset.imageId);
@@ -293,7 +694,7 @@ function mergeGuestFavoritesToActiveAccount({ confirm = false } = {}) {
     return 0;
   }
 
-  if (confirm && !window.confirm(`Add ${guestIds.length} no-account favorites to the selected account?`)) {
+  if (confirm && !window.confirm(t("account.guestMergeConfirm", "Add {count} no-account favorites to the selected account?", { count: guestIds.length }))) {
     return 0;
   }
 
@@ -306,7 +707,7 @@ function mergeGuestFavoritesToActiveAccount({ confirm = false } = {}) {
   renderFavorites();
   updateMergeGuestFavoritesAction();
   if (addedCount > 0) {
-    setAccountStatus(`${addedCount} no-account favorites added to this account.`, "success");
+    setAccountStatus(t("account.guestMerged", "{count} no-account favorites added to this account.", { count: addedCount }), "success");
   }
   return addedCount;
 }
@@ -381,11 +782,11 @@ function removeDownloadedRecord(imageId) {
 
 function clearDownloadedRecords() {
   if (downloadedPostIds.size === 0) {
-    setAccountStatus("No downloaded records to clear.", "success");
+    setAccountStatus(t("account.noDownloadRecords", "No downloaded records to clear."), "success");
     return;
   }
 
-  if (!window.confirm(`Clear ${downloadedPostIds.size} downloaded records? This will not delete local files.`)) {
+  if (!window.confirm(t("account.clearDownloadConfirm", "Clear {count} downloaded records? This will not delete local files.", { count: downloadedPostIds.size }))) {
     return;
   }
 
@@ -396,7 +797,7 @@ function clearDownloadedRecords() {
   if (activeDetailPost) {
     renderDetail(activeDetailPost);
   }
-  setAccountStatus("Downloaded records cleared.", "success");
+  setAccountStatus(t("account.downloadRecordsCleared", "Downloaded records cleared."), "success");
 }
 
 function getDanbooruAuthHeaders() {
@@ -468,7 +869,7 @@ function renderAccounts() {
   accountList.innerHTML = "";
   accountList.append(createAccountRow({
     id: "",
-    label: "No account",
+    label: t("settings.noAccount", "No account"),
     removable: false,
   }));
 
@@ -564,11 +965,11 @@ function restoreSearchSession() {
 
 async function loadLanguage() {
   try {
-    const response = await fetch("./lang/en.json");
-    const dictionary = await response.json();
+    const response = await fetch(`./lang/${activeLanguage}.json`);
+    currentDictionary = await response.json();
 
     i18nNodes.forEach((node) => {
-      const label = getNestedValue(dictionary, node.dataset.i18n);
+      const label = getNestedValue(currentDictionary, node.dataset.i18n);
       if (label) {
         node.textContent = label;
         node.closest("button")?.setAttribute("aria-label", label);
@@ -576,16 +977,40 @@ async function loadLanguage() {
     });
 
     i18nPlaceholderNodes.forEach((node) => {
-      const label = getNestedValue(dictionary, node.dataset.i18nPlaceholder);
+      const label = getNestedValue(currentDictionary, node.dataset.i18nPlaceholder);
       if (label) {
         node.setAttribute("placeholder", label);
       }
     });
 
-    document.title = dictionary.app?.title || document.title;
+    document.title = currentDictionary.app?.title || document.title;
+    document.documentElement.lang = activeLanguage === "zh" ? "zh-CN" : "en";
+    renderLanguageSettings();
+    renderRatingFilter();
+    renderAccounts();
+    renderBlacklistDraftTags();
+    renderBlacklistSuggestions();
+    renderBlacklistRules();
+    renderSuggestions();
+    syncAllImageCards();
+    updatePageDividers();
+    updateSelectionActions();
+    if (detailPanel.classList.contains("open") && activeDetailPost) {
+      renderDetail(activeDetailPost);
+    }
   } catch (error) {
     console.warn("Failed to load language file.", error);
   }
+}
+
+async function setLanguage(language) {
+  if (!isLanguageMode(language)) {
+    return;
+  }
+
+  activeLanguage = language;
+  saveLanguageSetting();
+  await loadLanguage();
 }
 
 function formatPostCount(count) {
@@ -609,6 +1034,14 @@ function normalizeSuggestion(item) {
     categoryName: categoryNames[categoryId] || "general",
     postCount: Number(item.post_count ?? item.postCount ?? 0),
   };
+}
+
+function normalizeManualTagValue(value) {
+  return String(value || "").trim().replace(/\s+/g, "_");
+}
+
+function getCategoryDisplayName(categoryName) {
+  return t(`tagCategories.${categoryName}`, categoryName);
 }
 
 function renderSelectedTags() {
@@ -655,7 +1088,7 @@ function renderSuggestions() {
 
     const category = document.createElement("span");
     category.className = "suggestion-category";
-    category.textContent = suggestion.categoryName;
+    category.textContent = getCategoryDisplayName(suggestion.categoryName);
 
     const count = document.createElement("span");
     count.className = "suggestion-count";
@@ -697,7 +1130,7 @@ function addDetailTagToSearch(tag, className) {
   closeDetail();
   showPage("search");
   submitSearch(getSearchQuery(false), true);
-  showToast("Added tag to search");
+  showToast(t("toast.addedTag", "Added tag to search"));
 }
 
 function removeTag(value) {
@@ -747,7 +1180,7 @@ async function loadSuggestions(query) {
 }
 
 function addRawTagFromInput() {
-  const value = tagInput.value.trim();
+  const value = normalizeManualTagValue(tagInput.value);
   if (!value) {
     return;
   }
@@ -763,7 +1196,7 @@ function addRawTagFromInput() {
 
 function getSearchQuery(includeInput = false) {
   const values = selectedTags.map((tag) => tag.value);
-  const rawInput = tagInput.value.trim();
+  const rawInput = normalizeManualTagValue(tagInput.value);
 
   if (includeInput && rawInput && !values.includes(rawInput)) {
     values.push(rawInput);
@@ -977,7 +1410,7 @@ function createDetailDownloadActions(post) {
   const downloadButton = document.createElement("button");
   downloadButton.className = "detail-download-button";
   downloadButton.type = "button";
-  downloadButton.textContent = "Download original";
+  downloadButton.textContent = t("detail.downloadOriginal", "Download original");
   downloadButton.disabled = !post.file_url;
   downloadButton.addEventListener("click", () => {
     downloadOriginal(post);
@@ -1000,7 +1433,7 @@ function createDetailDownloadActions(post) {
   removeIcon.setAttribute("aria-hidden", "true");
 
   const removeLabel = document.createElement("span");
-  removeLabel.textContent = "Delete record";
+  removeLabel.textContent = t("detail.deleteRecord", "Delete record");
   removeRecordButton.append(removeIcon, removeLabel);
   removeRecordButton.addEventListener("click", () => {
     removeDownloadedRecord(getPostId(post));
@@ -1041,18 +1474,18 @@ function renderDetail(post) {
   info.className = "detail-info";
 
   appendDetailRow(info, "ID", post.id);
-  appendDetailRow(info, "Source", post.source, { href: true });
-  appendDetailRow(info, "Dimensions", post.image_width && post.image_height ? `${post.image_width} x ${post.image_height}` : "");
-  appendDetailRow(info, "Format", post.file_ext ? post.file_ext.toUpperCase() : "");
-  appendDetailRow(info, "Size", formatFileSize(post.file_size));
+  appendDetailRow(info, t("detail.source", "Source"), post.source, { href: true });
+  appendDetailRow(info, t("detail.dimensions", "Dimensions"), post.image_width && post.image_height ? `${post.image_width} x ${post.image_height}` : "");
+  appendDetailRow(info, t("detail.format", "Format"), post.file_ext ? post.file_ext.toUpperCase() : "");
+  appendDetailRow(info, t("detail.size", "Size"), formatFileSize(post.file_size));
 
   const tagSections = document.createElement("div");
   tagSections.className = "detail-tags";
-  appendTagSection(tagSections, "Artist", post.tag_string_artist, "tag-artist");
-  appendTagSection(tagSections, "Character", post.tag_string_character, "tag-character");
-  appendTagSection(tagSections, "Copyright", post.tag_string_copyright, "tag-copyright");
-  appendTagSection(tagSections, "General", post.tag_string_general, "tag-general");
-  appendTagSection(tagSections, "Meta", post.tag_string_meta, "tag-meta");
+  appendTagSection(tagSections, t("detail.artist", "Artist"), post.tag_string_artist, "tag-artist");
+  appendTagSection(tagSections, t("detail.character", "Character"), post.tag_string_character, "tag-character");
+  appendTagSection(tagSections, t("detail.copyright", "Copyright"), post.tag_string_copyright, "tag-copyright");
+  appendTagSection(tagSections, t("detail.general", "General"), post.tag_string_general, "tag-general");
+  appendTagSection(tagSections, t("detail.meta", "Meta"), post.tag_string_meta, "tag-meta");
 
   detailContent.append(imageWrap, downloadActions, info, tagSections);
 }
@@ -1089,6 +1522,12 @@ refreshPageButton?.addEventListener("click", () => {
 themeOptionButtons.forEach((button) => {
   button.addEventListener("click", () => {
     setTheme(button.dataset.themeOption);
+  });
+});
+
+languageOptionButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    setLanguage(button.dataset.languageOption);
   });
 });
 
@@ -1145,6 +1584,91 @@ importFavoritesButton?.addEventListener("click", () => {
 
 favoritesFileInput?.addEventListener("change", () => {
   importFavoritesFile(favoritesFileInput.files?.[0]);
+});
+
+blacklistInputShell?.addEventListener("click", () => blacklistTagInput?.focus());
+
+blacklistTagInput?.addEventListener("focus", () => {
+  blacklistTagSearch?.classList.add("focused");
+  renderBlacklistSuggestions();
+});
+
+blacklistTagInput?.addEventListener("blur", () => {
+  blacklistTagSearch?.classList.remove("focused");
+  window.setTimeout(() => {
+    if (blacklistSuggestionsPanel) {
+      blacklistSuggestionsPanel.hidden = true;
+    }
+  }, 120);
+});
+
+blacklistTagInput?.addEventListener("input", () => {
+  loadBlacklistSuggestions(blacklistTagInput.value);
+  updateBlacklistAddButton();
+});
+
+blacklistTagInput?.addEventListener("keydown", (event) => {
+  if (event.key === "ArrowDown" && blacklistSuggestions.length > 0) {
+    event.preventDefault();
+    activeBlacklistSuggestionIndex = (activeBlacklistSuggestionIndex + 1) % blacklistSuggestions.length;
+    renderBlacklistSuggestions();
+    return;
+  }
+
+  if (event.key === "ArrowUp" && blacklistSuggestions.length > 0) {
+    event.preventDefault();
+    activeBlacklistSuggestionIndex = (activeBlacklistSuggestionIndex - 1 + blacklistSuggestions.length) % blacklistSuggestions.length;
+    renderBlacklistSuggestions();
+    return;
+  }
+
+  if (event.key === "Enter") {
+    event.preventDefault();
+    if (blacklistSuggestions[activeBlacklistSuggestionIndex]) {
+      addBlacklistDraftTag(blacklistSuggestions[activeBlacklistSuggestionIndex]);
+    } else if (blacklistTagInput.value.trim()) {
+      addRawBlacklistTagFromInput();
+    } else {
+      addBlacklistRule();
+    }
+    return;
+  }
+
+  if (event.key === "Tab" && blacklistSuggestions[activeBlacklistSuggestionIndex]) {
+    event.preventDefault();
+    addBlacklistDraftTag(blacklistSuggestions[activeBlacklistSuggestionIndex]);
+    return;
+  }
+
+  if (event.key === "Backspace" && !blacklistTagInput.value && blacklistDraftTags.length > 0) {
+    removeBlacklistDraftTag(blacklistDraftTags[blacklistDraftTags.length - 1].value);
+  }
+});
+
+blacklistSuggestionsList?.addEventListener("mousedown", (event) => {
+  event.preventDefault();
+  const button = event.target.closest(".suggestion-item");
+  if (!button) {
+    return;
+  }
+
+  addBlacklistDraftTag(blacklistSuggestions[Number(button.dataset.index)]);
+});
+
+blacklistSelectedTagsEl?.addEventListener("click", (event) => {
+  const chip = event.target.closest(".tag-chip");
+  if (chip) {
+    removeBlacklistDraftTag(chip.dataset.value);
+  }
+});
+
+addBlacklistRuleButton?.addEventListener("click", addBlacklistRule);
+
+blacklistList?.addEventListener("click", (event) => {
+  const deleteButton = event.target.closest(".blacklist-delete-button");
+  if (deleteButton) {
+    removeBlacklistRule(deleteButton.dataset.ruleId);
+  }
 });
 
 ratingFilterButton?.addEventListener("click", (event) => {
@@ -1221,13 +1745,6 @@ tagInput?.addEventListener("keydown", (event) => {
     return;
   }
 
-  if (event.key === " " && tagInput.value.trim()) {
-    event.preventDefault();
-    addRawTagFromInput();
-    submitSearch(getSearchQuery(false));
-    return;
-  }
-
   if (event.key === "Backspace" && !tagInput.value && selectedTags.length > 0) {
     removeTag(selectedTags[selectedTags.length - 1].value);
     submitSearch(getSearchQuery(false));
@@ -1296,7 +1813,7 @@ function syncImageCardControls(card, post) {
 
   if (selectButton && selectIcon) {
     selectButton.classList.toggle("selected", isSelected);
-    selectIcon.src = isSelected ? "/icons/square-check-filled.svg" : "/icons/square.svg";
+    selectIcon.src = isSelected ? "/icons/square-check.svg" : "/icons/square.svg";
     selectButton.setAttribute("aria-pressed", String(isSelected));
     selectButton.setAttribute("aria-label", `${isSelected ? "Unselect" : "Select"} ${getPostLabel(post)}`);
   }
@@ -1304,6 +1821,10 @@ function syncImageCardControls(card, post) {
   if (downloadedIndicator) {
     downloadedIndicator.classList.toggle("downloaded", isDownloaded);
     downloadedIndicator.hidden = !isDownloaded;
+    const downloadedLabel = downloadedIndicator.querySelector(".downloaded-label");
+    if (downloadedLabel) {
+      downloadedLabel.textContent = t("detail.downloaded", "downloaded");
+    }
   }
 }
 
@@ -1425,7 +1946,7 @@ function exportCurrentFavorites() {
   link.click();
   URL.revokeObjectURL(link.href);
   link.remove();
-  setFavoritesStatus(`${postIds.length} favorite IDs exported.`);
+  setFavoritesStatus(t("favorites.exported", "{count} favorite IDs exported.", { count: postIds.length }));
 }
 
 function getFavoriteIdsFromImport(payload) {
@@ -1461,7 +1982,7 @@ async function importFavoritesFile(file) {
     const payload = JSON.parse(await file.text());
     const importedIds = getFavoriteIdsFromImport(payload);
     if (importedIds.length === 0) {
-      throw new Error("No favorite IDs found in this file.");
+      throw new Error(t("favorites.importNoIds", "No favorite IDs found in this file."));
     }
 
     const accountId = getFavoriteAccountId();
@@ -1472,9 +1993,9 @@ async function importFavoritesFile(file) {
     syncAllImageCards();
     renderFavorites();
     updateMergeGuestFavoritesAction();
-    setFavoritesStatus(`${mergedIds.length - previousIds.length} new favorite IDs imported.`);
+    setFavoritesStatus(t("favorites.imported", "{count} new favorite IDs imported.", { count: mergedIds.length - previousIds.length }));
   } catch (error) {
-    setFavoritesStatus(`Import failed: ${error.message}`);
+    setFavoritesStatus(t("favorites.importFailed", "Import failed: {message}", { message: error.message }));
   } finally {
     if (favoritesFileInput) {
       favoritesFileInput.value = "";
@@ -1487,17 +2008,17 @@ async function addAccount() {
   const apiKey = accountApiKeyInput?.value.trim() || "";
 
   if (!username || !apiKey) {
-    setAccountStatus("Username and API key are required.", "error");
+    setAccountStatus(t("account.usernameApiKeyRequired", "Username and API key are required."), "error");
     return;
   }
 
   if (savedAccounts.some((account) => account.username.toLowerCase() === username.toLowerCase())) {
-    setAccountStatus("This account has already been added.", "error");
+    setAccountStatus(t("account.alreadyAdded", "This account has already been added."), "error");
     return;
   }
 
   addAccountButton.disabled = true;
-  setAccountStatus("Verifying account...");
+  setAccountStatus(t("account.verifying", "Verifying account..."));
 
   try {
     const response = await fetch("/api/account/verify", {
@@ -1514,7 +2035,7 @@ async function addAccount() {
       const lastAttempt = Array.isArray(payload.attempts) ? payload.attempts.at(-1) : null;
       const upstreamError = upstreamBody.error || lastAttempt?.body?.error;
       if (upstreamError === "User::PrivilegeError") {
-        throw new Error("API key access denied. Enable post read permissions for this key in Danbooru account settings.");
+        throw new Error(t("account.accessDenied", "API key access denied. Enable post read permissions for this key in Danbooru account settings."));
       }
 
       const upstreamMessage = upstreamBody.message || upstreamBody.error || lastAttempt?.body?.message || lastAttempt?.body?.error;
@@ -1541,7 +2062,7 @@ async function addAccount() {
       mergedGuestCount = mergeGuestFavoritesToActiveAccount({ confirm: true });
     }
     if (mergedGuestCount === 0) {
-      setAccountStatus("Account added.", "success");
+      setAccountStatus(t("account.added", "Account added."), "success");
     }
     submitSearch(getSearchQuery(true), true);
   } catch (error) {
@@ -1557,7 +2078,7 @@ function removeAccount(accountId) {
     return;
   }
 
-  if (!window.confirm(`Remove account "${account.username}"?`)) {
+  if (!window.confirm(t("account.removeConfirm", "Remove account \"{username}\"?", { username: account.username }))) {
     return;
   }
 
@@ -1571,7 +2092,7 @@ function removeAccount(accountId) {
   renderAccounts();
   syncAllImageCards();
   updateMergeGuestFavoritesAction();
-  setAccountStatus("Account removed.", "success");
+  setAccountStatus(t("account.removed", "Account removed."), "success");
   submitSearch(getSearchQuery(true), true);
 }
 
@@ -1656,7 +2177,8 @@ function createImageCard(post) {
   downloadedIcon.setAttribute("aria-hidden", "true");
 
   const downloadedLabel = document.createElement("span");
-  downloadedLabel.textContent = "downloaded";
+  downloadedLabel.className = "downloaded-label";
+  downloadedLabel.textContent = t("detail.downloaded", "downloaded");
   downloadedIndicator.append(downloadedIcon, downloadedLabel);
 
   overlayActions.append(favoriteButton, shareButton, selectButton, downloadedIndicator);
@@ -1687,7 +2209,7 @@ function createImageCard(post) {
         throw new Error("Clipboard copy was blocked.");
       }
       showShareCopiedState(shareButton, post);
-      showToast("Copied");
+      showToast(t("toast.copied", "Copied"));
     } catch (error) {
       console.warn("Failed to copy original link.", error);
       shareButton.setAttribute("aria-label", `Could not copy original link for ${getPostLabel(post)}`);
@@ -1706,7 +2228,7 @@ function createImageCard(post) {
     }
 
     selectButton.classList.toggle("selected", !isSelected);
-    selectIcon.src = isSelected ? "/icons/square.svg" : "/icons/square-check-filled.svg";
+    selectIcon.src = isSelected ? "/icons/square.svg" : "/icons/square-check.svg";
     selectButton.setAttribute("aria-pressed", String(!isSelected));
     selectButton.setAttribute("aria-label", `${isSelected ? "Select" : "Unselect"} ${getPostLabel(post)}`);
     if (isSelected) {
@@ -1753,7 +2275,9 @@ async function loadPostPage() {
   isLoadingPosts = true;
   const requestId = postRequestId;
   const nextPage = activeSearchPage + 1;
-  setSearchStatus(nextPage === 1 ? "Loading images..." : "Loading more images...");
+  setSearchStatus(nextPage === 1
+    ? t("searchStatus.loadingImages", "Loading images...")
+    : t("searchStatus.loadingMore", "Loading more images..."));
 
   const params = new URLSearchParams({
     tags: activeSearchTags,
@@ -1777,23 +2301,24 @@ async function loadPostPage() {
 
     const rawPosts = Array.isArray(payload.body) ? payload.body : [];
     const posts = normalizePostList(payload);
+    const visiblePosts = filterBlockedPosts(posts);
 
-    if (posts.length > 0) {
+    if (visiblePosts.length > 0) {
       posts.forEach((post) => imageStore.set(getPostId(post), post));
-      appendPostPage(searchResults, posts, nextPage);
+      appendPostPage(searchResults, visiblePosts, nextPage);
     }
 
     activeSearchPage = nextPage;
     hasMorePosts = rawPosts.length >= postsPerPage;
 
-    if (activeSearchPage === 1 && posts.length === 0) {
-      setSearchStatus("No images found.");
+    if (activeSearchPage === 1 && visiblePosts.length === 0) {
+      setSearchStatus(t("searchStatus.noImages", "No images found."));
     } else {
-      setSearchStatus(hasMorePosts ? "" : "No more images.");
+      setSearchStatus(hasMorePosts ? "" : t("searchStatus.noMore", "No more images."));
     }
   } catch (error) {
     if (requestId === postRequestId) {
-      setSearchStatus(`Request failed: ${error.message}`);
+      setSearchStatus(t("searchStatus.requestFailed", "Request failed: {message}", { message: error.message }));
     }
   } finally {
     if (requestId === postRequestId) {
@@ -1856,12 +2381,23 @@ function setupInfiniteScroll() {
 function createPageDivider(pageNumber) {
   const divider = document.createElement("div");
   divider.className = "page-divider";
+  divider.dataset.pageNumber = String(pageNumber);
   divider.setAttribute("aria-label", `End of page ${pageNumber}`);
 
   const label = document.createElement("span");
-  label.textContent = `Page ${pageNumber}`;
+  label.textContent = t("page.divider", "Page {page}", { page: pageNumber });
   divider.append(label);
   return divider;
+}
+
+function updatePageDividers() {
+  document.querySelectorAll(".page-divider").forEach((divider) => {
+    const pageNumber = divider.dataset.pageNumber;
+    const label = divider.querySelector("span");
+    if (label && pageNumber) {
+      label.textContent = t("page.divider", "Page {page}", { page: pageNumber });
+    }
+  });
 }
 
 function appendPostPage(container, posts, pageNumber) {
@@ -1907,6 +2443,7 @@ async function renderFavorites() {
   favoriteRenderRequestId = requestId;
   favoritesStream.innerHTML = "";
   const favoriteIds = getCurrentFavoriteIds();
+  setFavoritesEmptyMessage();
   favoritesEmpty.hidden = favoriteIds.length > 0;
   setFavoritesStatus("");
 
@@ -1914,7 +2451,7 @@ async function renderFavorites() {
     return;
   }
 
-  setFavoritesStatus("Loading favorites...");
+  setFavoritesStatus(t("favorites.loading", "Loading favorites..."));
   const favoritePosts = [];
   let failedCount = 0;
 
@@ -1935,12 +2472,21 @@ async function renderFavorites() {
   }
 
   favoritesStream.innerHTML = "";
-  favoritesEmpty.hidden = favoritePosts.length > 0;
-  if (favoritePosts.length > 0) {
-    appendPostPage(favoritesStream, favoritePosts, 1);
+  const visibleFavoritePosts = filterBlockedPosts(favoritePosts);
+  setFavoritesEmptyMessage(
+    favoritePosts.length > 0 && visibleFavoritePosts.length === 0
+      ? "favorites.hiddenByBlacklist"
+      : "favorites.empty",
+    favoritePosts.length > 0 && visibleFavoritePosts.length === 0
+      ? "Favorite images are hidden by blacklist rules."
+      : "No favorite images yet.",
+  );
+  favoritesEmpty.hidden = visibleFavoritePosts.length > 0;
+  if (visibleFavoritePosts.length > 0) {
+    appendPostPage(favoritesStream, visibleFavoritePosts, 1);
   }
 
-  setFavoritesStatus(failedCount > 0 ? `${failedCount} favorites could not be loaded.` : "");
+  setFavoritesStatus(failedCount > 0 ? t("favorites.failedCount", "{count} favorites could not be loaded.", { count: failedCount }) : "");
 }
 
 closeDetailButton?.addEventListener("click", closeDetail);
@@ -1959,20 +2505,28 @@ window.addEventListener("keydown", (event) => {
 
 window.addEventListener("beforeunload", saveSearchSession);
 
-loadThemeSetting();
-loadImageSettings();
-loadAccountSettings();
-loadFavoriteSettings();
-loadDownloadedRecords();
-renderThemeSettings();
-renderLoadingSettings();
-renderAccounts();
-updateMergeGuestFavoritesAction();
-loadLanguage();
-showPage("search");
-updateSelectionActions();
-setupInfiniteScroll();
-const restoredSearch = restoreSearchSession();
-startPostSearch(restoredSearch.query).then(() => {
-  restoreLoadedPages(restoredSearch.loadedPage, restoredSearch.scrollY);
-});
+async function initializeApp() {
+  loadThemeSetting();
+  loadLanguageSetting();
+  loadImageSettings();
+  loadAccountSettings();
+  loadFavoriteSettings();
+  loadDownloadedRecords();
+  loadBlacklistSettings();
+  renderThemeSettings();
+  renderLoadingSettings();
+  renderLanguageSettings();
+  renderBlacklistDraftTags();
+  renderBlacklistRules();
+  updateMergeGuestFavoritesAction();
+  await loadLanguage();
+  showPage("search");
+  updateSelectionActions();
+  setupInfiniteScroll();
+  const restoredSearch = restoreSearchSession();
+  startPostSearch(restoredSearch.query).then(() => {
+    restoreLoadedPages(restoredSearch.loadedPage, restoredSearch.scrollY);
+  });
+}
+
+initializeApp();

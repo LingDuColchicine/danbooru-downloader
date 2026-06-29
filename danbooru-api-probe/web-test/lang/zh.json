@@ -1,0 +1,120 @@
+{
+  "app": {
+    "title": "Danbooru 下载器"
+  },
+  "nav": {
+    "menu": "菜单",
+    "search": "搜索",
+    "favorites": "收藏",
+    "settings": "设置"
+  },
+  "search": {
+    "title": "搜索",
+    "placeholder": "输入标签...",
+    "rating": "分级",
+    "ratingNone": "无",
+    "ratingGeneral": "普通",
+    "ratingSensitive": "敏感",
+    "ratingQuestionable": "可疑",
+    "ratingExplicit": "限制"
+  },
+  "favorites": {
+    "title": "收藏",
+    "import": "导入",
+    "export": "导出",
+    "empty": "还没有收藏图片。",
+    "hiddenByBlacklist": "收藏图片已被黑名单规则隐藏。",
+    "loading": "正在加载收藏...",
+    "failedCount": "{count} 个收藏无法加载。",
+    "exported": "已导出 {count} 个收藏 ID。",
+    "imported": "已导入 {count} 个新的收藏 ID。",
+    "importNoIds": "这个文件中没有找到收藏 ID。",
+    "importFailed": "导入失败：{message}"
+  },
+  "selection": {
+    "clear": "全部取消",
+    "downloadOriginals": "下载原图"
+  },
+  "detail": {
+    "title": "图片详情",
+    "source": "来源",
+    "dimensions": "尺寸",
+    "format": "格式",
+    "size": "大小",
+    "artist": "作者",
+    "character": "角色",
+    "copyright": "版权",
+    "general": "通用",
+    "meta": "元信息",
+    "downloadOriginal": "下载原图",
+    "deleteRecord": "删除记录",
+    "downloaded": "已下载"
+  },
+  "tagCategories": {
+    "general": "通用",
+    "artist": "作者",
+    "copyright": "版权",
+    "character": "角色",
+    "meta": "元信息"
+  },
+  "page": {
+    "divider": "第 {page} 页"
+  },
+  "settings": {
+    "title": "设置",
+    "theme": "主题",
+    "themeLight": "浅色",
+    "themeDark": "深色",
+    "language": "语言",
+    "languageEnglish": "英文",
+    "languageChinese": "中文",
+    "accountLogin": "账号登录",
+    "username": "用户名",
+    "apiKey": "API Key",
+    "accountHelp": "登录后从 More >> Profile 进入，打开 API Keys，直接创建 API Key 即可，不要选择额外选项。",
+    "mergeGuestFavorites": "将未登录收藏加入当前账号",
+    "blacklist": "黑名单",
+    "blacklistPlaceholder": "输入屏蔽标签...",
+    "noAccount": "不使用账号",
+    "thumbnailLoading": "缩略图加载",
+    "detailLoading": "详情图加载",
+    "loadingAuto": "自动",
+    "loadingDirect": "直连",
+    "loadingProxy": "代理",
+    "downloadHistory": "下载记录",
+    "clearDownloaded": "清空下载记录"
+  },
+  "account": {
+    "usernameApiKeyRequired": "需要填写用户名和 API Key。",
+    "alreadyAdded": "该账号已经添加过。",
+    "verifying": "正在验证账号...",
+    "accessDenied": "API Key 访问被拒绝。请在 Danbooru 账号设置中为该 Key 开启帖子读取权限。",
+    "added": "账号已添加。",
+    "removed": "账号已移除。",
+    "removeConfirm": "确定移除账号「{username}」吗？",
+    "guestMergeConfirm": "是否将 {count} 个未登录收藏加入当前账号？",
+    "guestMerged": "已将 {count} 个未登录收藏加入当前账号。",
+    "noDownloadRecords": "没有可清空的下载记录。",
+    "clearDownloadConfirm": "确定清空 {count} 条下载记录吗？这不会删除本地文件。",
+    "downloadRecordsCleared": "下载记录已清空。"
+  },
+  "blacklist": {
+    "empty": "还没有黑名单配置。",
+    "tagRequired": "请先添加至少一个标签。",
+    "duplicate": "这条黑名单配置已经存在。",
+    "added": "黑名单配置已添加。",
+    "removed": "黑名单配置已移除。",
+    "removeConfirm": "确定移除黑名单配置「{label}」吗？"
+  },
+  "toast": {
+    "copied": "已复制",
+    "addedTag": "已加入搜索"
+  },
+  "searchStatus": {
+    "loadingImages": "正在加载图片...",
+    "loadingMore": "正在加载更多图片...",
+    "noImages": "没有找到图片。",
+    "noMore": "没有更多图片。",
+    "requestFailed": "请求失败：{message}"
+  }
+}

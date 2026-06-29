@@ -142,6 +142,16 @@
                 </div>
               </div>
 
+              <div class="settings-row">
+                <div>
+                  <h2 data-i18n="settings.language">Language</h2>
+                </div>
+                <div class="segmented-control" role="group" aria-label="Language">
+                  <button class="segment-button" type="button" data-language-option="en" data-i18n="settings.languageEnglish">English</button>
+                  <button class="segment-button" type="button" data-language-option="zh" data-i18n="settings.languageChinese">Chinese</button>
+                </div>
+              </div>
+
               <div class="settings-row account-settings-row">
                 <div>
                   <h2 data-i18n="settings.accountLogin">Account login</h2>
@@ -167,14 +177,46 @@
                 </div>
               </div>
 
+              <div class="settings-row blacklist-settings-row">
+                <div>
+                  <h2 data-i18n="settings.blacklist">Blacklist</h2>
+                </div>
+                <div class="blacklist-panel">
+                  <div class="blacklist-tag-search" id="blacklist-tag-search">
+                    <div class="blacklist-input-shell" id="blacklist-input-shell">
+                      <div class="blacklist-selected-tags" id="blacklist-selected-tags" aria-label="Blacklist rule tags"></div>
+                      <input
+                        id="blacklist-tag-input"
+                        class="blacklist-tag-input"
+                        type="text"
+                        autocomplete="off"
+                        spellcheck="false"
+                        data-i18n-placeholder="settings.blacklistPlaceholder"
+                        placeholder="Type blocked tags..."
+                        aria-label="Blacklist tags"
+                      >
+                      <button class="icon-button blacklist-add-button" id="add-blacklist-rule" type="button" aria-label="Add blacklist rule">
+                        <span class="action-icon icon-plus" aria-hidden="true"></span>
+                      </button>
+                    </div>
+
+                    <div class="suggestions-panel blacklist-suggestions-panel" id="blacklist-suggestions-panel" hidden>
+                      <div class="suggestions-list" id="blacklist-suggestions-list" role="listbox" aria-label="Blacklist tag suggestions"></div>
+                    </div>
+                  </div>
+                  <p class="blacklist-status" id="blacklist-status" aria-live="polite"></p>
+                  <div class="blacklist-list" id="blacklist-list" aria-label="Blacklist rules"></div>
+                </div>
+              </div>
+
               <div class="settings-row">
                 <div>
                   <h2 data-i18n="settings.thumbnailLoading">Thumbnail loading</h2>
                 </div>
                 <div class="segmented-control" role="group" aria-label="Thumbnail loading">
-                  <button class="segment-button" type="button" data-loading-target="thumbnail" data-loading-mode="auto">Auto</button>
-                  <button class="segment-button" type="button" data-loading-target="thumbnail" data-loading-mode="direct">Direct</button>
-                  <button class="segment-button" type="button" data-loading-target="thumbnail" data-loading-mode="proxy">Proxy</button>
+                  <button class="segment-button" type="button" data-loading-target="thumbnail" data-loading-mode="auto" data-i18n="settings.loadingAuto">Auto</button>
+                  <button class="segment-button" type="button" data-loading-target="thumbnail" data-loading-mode="direct" data-i18n="settings.loadingDirect">Direct</button>
+                  <button class="segment-button" type="button" data-loading-target="thumbnail" data-loading-mode="proxy" data-i18n="settings.loadingProxy">Proxy</button>
                 </div>
               </div>
 
@@ -183,9 +225,9 @@
                   <h2 data-i18n="settings.detailLoading">Detail image loading</h2>
                 </div>
                 <div class="segmented-control" role="group" aria-label="Detail image loading">
-                  <button class="segment-button" type="button" data-loading-target="detail" data-loading-mode="auto">Auto</button>
-                  <button class="segment-button" type="button" data-loading-target="detail" data-loading-mode="direct">Direct</button>
-                  <button class="segment-button" type="button" data-loading-target="detail" data-loading-mode="proxy">Proxy</button>
+                  <button class="segment-button" type="button" data-loading-target="detail" data-loading-mode="auto" data-i18n="settings.loadingAuto">Auto</button>
+                  <button class="segment-button" type="button" data-loading-target="detail" data-loading-mode="direct" data-i18n="settings.loadingDirect">Direct</button>
+                  <button class="segment-button" type="button" data-loading-target="detail" data-loading-mode="proxy" data-i18n="settings.loadingProxy">Proxy</button>
                 </div>
               </div>
 
@@ -207,11 +249,11 @@
     <div class="selection-actions" id="selection-actions" hidden>
       <button class="selection-action-button" id="clear-selection" type="button">
         <span class="action-icon icon-x" aria-hidden="true"></span>
-        <span>全部取消</span>
+        <span data-i18n="selection.clear">Clear all</span>
       </button>
       <button class="selection-action-button primary" id="download-selection" type="button">
         <span class="action-icon icon-download" aria-hidden="true"></span>
-        <span>下载原图</span>
+        <span data-i18n="selection.downloadOriginals">Download originals</span>
       </button>
     </div>
 
@@ -220,7 +262,7 @@
     <div class="detail-backdrop" id="detail-backdrop" hidden></div>
     <aside class="detail-panel" id="detail-panel" aria-hidden="true" aria-label="Image details">
       <div class="detail-panel-header">
-        <h2>Image details</h2>
+        <h2 data-i18n="detail.title">Image details</h2>
         <button class="icon-button" id="close-detail" type="button" aria-label="Close details">
           <span class="action-icon icon-x" aria-hidden="true"></span>
         </button>

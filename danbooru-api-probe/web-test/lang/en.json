@@ -22,22 +22,99 @@
     "title": "Favorites",
     "import": "Import",
     "export": "Export",
-    "empty": "No favorite images yet."
+    "empty": "No favorite images yet.",
+    "hiddenByBlacklist": "Favorite images are hidden by blacklist rules.",
+    "loading": "Loading favorites...",
+    "failedCount": "{count} favorites could not be loaded.",
+    "exported": "{count} favorite IDs exported.",
+    "imported": "{count} new favorite IDs imported.",
+    "importNoIds": "No favorite IDs found in this file.",
+    "importFailed": "Import failed: {message}"
+  },
+  "selection": {
+    "clear": "Clear all",
+    "downloadOriginals": "Download originals"
+  },
+  "detail": {
+    "title": "Image details",
+    "source": "Source",
+    "dimensions": "Dimensions",
+    "format": "Format",
+    "size": "Size",
+    "artist": "Artist",
+    "character": "Character",
+    "copyright": "Copyright",
+    "general": "General",
+    "meta": "Meta",
+    "downloadOriginal": "Download original",
+    "deleteRecord": "Delete record",
+    "downloaded": "downloaded"
+  },
+  "tagCategories": {
+    "general": "General",
+    "artist": "Artist",
+    "copyright": "Copyright",
+    "character": "Character",
+    "meta": "Meta"
+  },
+  "page": {
+    "divider": "Page {page}"
   },
   "settings": {
     "title": "Settings",
     "theme": "Theme",
     "themeLight": "Light",
     "themeDark": "Dark",
+    "language": "Language",
+    "languageEnglish": "English",
+    "languageChinese": "Chinese",
     "accountLogin": "Account login",
     "username": "Username",
     "apiKey": "API key",
     "accountHelp": "Create it from More >> Profile after logging in, open API Keys, then create a key directly without selecting any extra options.",
     "mergeGuestFavorites": "Add no-account favorites to this account",
+    "blacklist": "Blacklist",
+    "blacklistPlaceholder": "Type blocked tags...",
     "noAccount": "No account",
     "thumbnailLoading": "Thumbnail loading",
     "detailLoading": "Detail image loading",
+    "loadingAuto": "Auto",
+    "loadingDirect": "Direct",
+    "loadingProxy": "Proxy",
     "downloadHistory": "Download history",
     "clearDownloaded": "Clear downloaded records"
+  },
+  "account": {
+    "usernameApiKeyRequired": "Username and API key are required.",
+    "alreadyAdded": "This account has already been added.",
+    "verifying": "Verifying account...",
+    "accessDenied": "API key access denied. Enable post read permissions for this key in Danbooru account settings.",
+    "added": "Account added.",
+    "removed": "Account removed.",
+    "removeConfirm": "Remove account \"{username}\"?",
+    "guestMergeConfirm": "Add {count} no-account favorites to the selected account?",
+    "guestMerged": "{count} no-account favorites added to this account.",
+    "noDownloadRecords": "No downloaded records to clear.",
+    "clearDownloadConfirm": "Clear {count} downloaded records? This will not delete local files.",
+    "downloadRecordsCleared": "Downloaded records cleared."
+  },
+  "blacklist": {
+    "empty": "No blacklist rules yet.",
+    "tagRequired": "Add at least one tag first.",
+    "duplicate": "This blacklist rule already exists.",
+    "added": "Blacklist rule added.",
+    "removed": "Blacklist rule removed.",
+    "removeConfirm": "Remove blacklist rule \"{label}\"?"
+  },
+  "toast": {
+    "copied": "Copied",
+    "addedTag": "Added tag to search"
+  },
+  "searchStatus": {
+    "loadingImages": "Loading images...",
+    "loadingMore": "Loading more images...",
+    "noImages": "No images found.",
+    "noMore": "No more images.",
+    "requestFailed": "Request failed: {message}"
   }
 }
