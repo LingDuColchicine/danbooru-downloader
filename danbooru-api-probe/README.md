@@ -106,3 +106,21 @@ Detailed flow and handoff notes are in:
 ```text
 web-test/FLOW.md
 ```
+
+## Electron Shell
+
+Install dependencies from this folder:
+
+```bash
+pnpm install
+```
+
+Start the desktop shell:
+
+```bash
+pnpm run electron:dev
+```
+
+The Electron main process starts the existing `web-test/server.mjs` proxy on a local port, then opens the current web UI in an isolated desktop window. If the default port is busy, the app picks an available local port automatically.
+
+The project `.npmrc` points Electron downloads to the npm mirror because Electron's default binary download can be slow or unstable on some networks.
