@@ -17,6 +17,7 @@
   "build": {
     "appId": "com.night7zx.danbooru-downloader",
     "productName": "Danbooru Downloader",
+    "asar": false,
     "directories": {
       "output": "dist"
     },

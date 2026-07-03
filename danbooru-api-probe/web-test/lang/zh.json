@@ -63,6 +63,7 @@
   "settings": {
     "title": "设置",
     "theme": "主题",
+    "themeSystem": "跟随系统",
     "themeLight": "浅色",
     "themeDark": "深色",
     "language": "语言",
@@ -78,6 +79,9 @@
     "noAccount": "不使用账号",
     "thumbnailLoading": "缩略图加载",
     "detailLoading": "详情图加载",
+    "downloadLocation": "下载位置",
+    "downloadLocationUnavailable": "浏览器默认位置",
+    "chooseDownloadLocation": "选择",
     "loadingAuto": "自动",
     "loadingDirect": "直连",
     "loadingProxy": "代理",
@@ -108,7 +112,15 @@
   },
   "toast": {
     "copied": "已复制",
-    "addedTag": "已加入搜索"
+    "addedTag": "已加入搜索",
+    "downloaded": "原图已下载",
+    "downloadFailed": "下载失败：{message}"
+  },
+  "download": {
+    "directoryLoaded": "已读取下载位置。",
+    "directoryChanged": "下载位置已更新。",
+    "directoryUnavailable": "下载位置需要在桌面版中设置。",
+    "noFileUrl": "原图链接不可用。"
   },
   "searchStatus": {
     "loadingImages": "正在加载图片...",

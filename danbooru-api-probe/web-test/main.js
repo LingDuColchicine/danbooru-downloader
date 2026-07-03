@@ -44,6 +44,9 @@ const blacklistSuggestionsPanel = document.querySelector("#blacklist-suggestions
 const blacklistSuggestionsList = document.querySelector("#blacklist-suggestions-list");
 const blacklistStatus = document.querySelector("#blacklist-status");
 const blacklistList = document.querySelector("#blacklist-list");
+const downloadDirectoryPath = document.querySelector("#download-directory-path");
+const chooseDownloadDirectoryButton = document.querySelector("#choose-download-directory");
+const downloadSettingsStatus = document.querySelector("#download-settings-status");
 const clearDownloadHistoryButton = document.querySelector("#clear-download-history");
 const themeOptionButtons = [...document.querySelectorAll("[data-theme-option]")];
 const languageOptionButtons = [...document.querySelectorAll("[data-language-option]")];
@@ -52,6 +55,7 @@ const detailBackdrop = document.querySelector("#detail-backdrop");
 const detailPanel = document.querySelector("#detail-panel");
 const detailContent = document.querySelector("#detail-content");
 const closeDetailButton = document.querySelector("#close-detail");
+const systemThemeMediaQuery = window.matchMedia?.("(prefers-color-scheme: dark)") || null;
 
 const categoryNames = {
   0: "general",
@@ -74,6 +78,7 @@ let blacklistAutocompleteRequestId = 0;
 const selectedImages = new Set();
 const imageStore = new Map();
 const postsPerPage = 20;
+const defaultRating = "g";
 let activeSearchTags = "";
 let activeSearchPage = 0;
 let isLoadingPosts = false;
@@ -82,8 +87,9 @@ let postRequestId = 0;
 let searchObserver;
 let autoSearchTimer;
 let lastSubmittedSearchTags = "";
-let activeRating = "";
-let activeTheme = "light";
+let activeRating = defaultRating;
+let activeTheme = "system";
+let activeSystemTheme = systemThemeMediaQuery?.matches ? "dark" : "light";
 let activeLanguage = "en";
 let currentDictionary = {};
 const searchSessionKey = "danbooruDownloader.searchSession";
@@ -105,6 +111,7 @@ let activeAccountId = "";
 let favoritesByAccount = {};
 let downloadedPostIds = new Set();
 let blacklistRules = [];
+let activeDownloadDirectory = "";
 let favoriteRenderRequestId = 0;
 let activeDetailPost = null;
 let toastTimer;
@@ -163,16 +170,26 @@ function renderLanguageSettings() {
 }
 
 function isThemeMode(value) {
+  return value === "system" || value === "light" || value === "dark";
+}
+
+function isResolvedTheme(value) {
   return value === "light" || value === "dark";
 }
 
+function resolveThemeSetting(theme = activeTheme) {
+  return theme === "system" ? activeSystemTheme : theme;
+}
+
 function applyThemeSetting(theme) {
-  activeTheme = isThemeMode(theme) ? theme : "light";
-  document.documentElement.dataset.theme = activeTheme;
+  activeTheme = isThemeMode(theme) ? theme : "system";
+  document.documentElement.dataset.theme = resolveThemeSetting(activeTheme);
+  document.documentElement.dataset.themePreference = activeTheme;
 }
 
 function loadThemeSetting() {
-  applyThemeSetting(localStorage.getItem(themeSettingsKey) || document.documentElement.dataset.theme || "light");
+  const saved = localStorage.getItem(themeSettingsKey) || document.documentElement.dataset.themePreference || "system";
+  applyThemeSetting(saved);
 }
 
 function saveThemeSetting() {
@@ -191,6 +208,49 @@ function setTheme(theme) {
   applyThemeSetting(theme);
   saveThemeSetting();
   renderThemeSettings();
+}
+
+function handleSystemThemeChanged(theme) {
+  if (!isResolvedTheme(theme)) {
+    return;
+  }
+
+  activeSystemTheme = theme;
+  if (activeTheme === "system") {
+    applyThemeSetting(activeTheme);
+  }
+}
+
+async function setupSystemThemeSync() {
+  if (systemThemeMediaQuery) {
+    const onBrowserSystemThemeChanged = (event) => {
+      handleSystemThemeChanged(event.matches ? "dark" : "light");
+    };
+
+    if (systemThemeMediaQuery.addEventListener) {
+      systemThemeMediaQuery.addEventListener("change", onBrowserSystemThemeChanged);
+    } else {
+      systemThemeMediaQuery.addListener(onBrowserSystemThemeChanged);
+    }
+  }
+
+  const desktopApi = getDesktopApi();
+  if (!desktopApi) {
+    return;
+  }
+
+  if (desktopApi.onSystemThemeChanged) {
+    desktopApi.onSystemThemeChanged(handleSystemThemeChanged);
+  }
+
+  if (desktopApi.getSystemTheme) {
+    try {
+      const result = await desktopApi.getSystemTheme();
+      handleSystemThemeChanged(result?.theme);
+    } catch (error) {
+      console.warn("Failed to read system theme.", error);
+    }
+  }
 }
 
 function loadImageSettings() {
@@ -330,6 +390,71 @@ function setBlacklistStatus(message = "", type = "") {
   blacklistStatus.textContent = message;
   blacklistStatus.classList.toggle("error", type === "error");
   blacklistStatus.classList.toggle("success", type === "success");
+}
+
+function getDesktopApi() {
+  return globalThis.danbooruDesktop || null;
+}
+
+function setDownloadSettingsStatus(message = "", type = "") {
+  if (!downloadSettingsStatus) {
+    return;
+  }
+
+  downloadSettingsStatus.textContent = message;
+  downloadSettingsStatus.classList.toggle("error", type === "error");
+  downloadSettingsStatus.classList.toggle("success", type === "success");
+}
+
+function renderDownloadDirectory() {
+  if (!downloadDirectoryPath) {
+    return;
+  }
+
+  downloadDirectoryPath.textContent = activeDownloadDirectory || t("settings.downloadLocationUnavailable", "Browser default");
+  downloadDirectoryPath.title = activeDownloadDirectory || "";
+  if (chooseDownloadDirectoryButton) {
+    chooseDownloadDirectoryButton.disabled = !getDesktopApi()?.chooseDownloadDirectory;
+  }
+}
+
+async function loadDownloadDirectory() {
+  const desktopApi = getDesktopApi();
+  if (!desktopApi?.getDownloadDirectory) {
+    activeDownloadDirectory = "";
+    renderDownloadDirectory();
+    setDownloadSettingsStatus(t("download.directoryUnavailable", "Download location is available in the desktop app."));
+    return;
+  }
+
+  try {
+    const result = await desktopApi.getDownloadDirectory();
+    activeDownloadDirectory = result?.directory || "";
+    renderDownloadDirectory();
+  } catch (error) {
+    setDownloadSettingsStatus(error.message, "error");
+  }
+}
+
+async function chooseDownloadDirectory() {
+  const desktopApi = getDesktopApi();
+  if (!desktopApi?.chooseDownloadDirectory) {
+    setDownloadSettingsStatus(t("download.directoryUnavailable", "Download location is available in the desktop app."), "error");
+    return;
+  }
+
+  try {
+    const result = await desktopApi.chooseDownloadDirectory();
+    if (!result?.ok) {
+      return;
+    }
+
+    activeDownloadDirectory = result.directory || "";
+    renderDownloadDirectory();
+    setDownloadSettingsStatus(t("download.directoryChanged", "Download location updated."), "success");
+  } catch (error) {
+    setDownloadSettingsStatus(error.message, "error");
+  }
 }
 
 function normalizeBlacklistTag(tag) {
@@ -941,7 +1066,8 @@ function saveSearchSession() {
 function restoreSearchSession() {
   const session = getSearchSession();
   if (!session || typeof session !== "object") {
-    return { query: "", loadedPage: 1, scrollY: 0 };
+    renderRatingFilter();
+    return { query: getSearchQuery(true), loadedPage: 1, scrollY: 0 };
   }
 
   if (Array.isArray(session.selectedTags)) {
@@ -952,7 +1078,7 @@ function restoreSearchSession() {
     tagInput.value = session.rawInput;
   }
 
-  activeRating = typeof session.activeRating === "string" ? session.activeRating : "";
+  activeRating = typeof session.activeRating === "string" ? session.activeRating : defaultRating;
   renderSelectedTags();
   renderRatingFilter();
 
@@ -992,6 +1118,7 @@ async function loadLanguage() {
     renderBlacklistSuggestions();
     renderBlacklistRules();
     renderSuggestions();
+    renderDownloadDirectory();
     syncAllImageCards();
     updatePageDividers();
     updateSelectionActions();
@@ -1313,14 +1440,45 @@ function appendTagSection(parent, title, tags, className) {
   parent.append(section);
 }
 
-function downloadOriginal(post) {
+function getDownloadFilename(post) {
+  return `danbooru-${post.id}.${post.file_ext || "jpg"}`;
+}
+
+async function downloadOriginal(post) {
   if (!post?.file_url) {
+    showToast(t("toast.downloadFailed", "Download failed: {message}", {
+      message: t("download.noFileUrl", "Original file URL is unavailable."),
+    }));
     return false;
+  }
+
+  const desktopApi = getDesktopApi();
+  if (desktopApi?.downloadOriginal) {
+    try {
+      const result = await desktopApi.downloadOriginal({
+        fileUrl: post.file_url,
+        filename: getDownloadFilename(post),
+        postId: getPostId(post),
+      });
+
+      if (!result?.ok) {
+        throw new Error(result?.message || "Unknown error");
+      }
+
+      addDownloadedRecord(getPostId(post));
+      activeDownloadDirectory = result.directory || activeDownloadDirectory;
+      renderDownloadDirectory();
+      showToast(t("toast.downloaded", "Downloaded original"));
+      return true;
+    } catch (error) {
+      showToast(t("toast.downloadFailed", "Download failed: {message}", { message: error.message }));
+      return false;
+    }
   }
 
   const link = document.createElement("a");
   link.href = post.file_url;
-  link.download = `danbooru-${post.id}.${post.file_ext || "jpg"}`;
+  link.download = getDownloadFilename(post);
   link.rel = "noreferrer";
   document.body.append(link);
   link.click();
@@ -1412,8 +1570,10 @@ function createDetailDownloadActions(post) {
   downloadButton.type = "button";
   downloadButton.textContent = t("detail.downloadOriginal", "Download original");
   downloadButton.disabled = !post.file_url;
-  downloadButton.addEventListener("click", () => {
-    downloadOriginal(post);
+  downloadButton.addEventListener("click", async () => {
+    downloadButton.disabled = true;
+    await downloadOriginal(post);
+    downloadButton.disabled = !post.file_url;
   });
 
   if (!isDownloaded) {
@@ -1575,6 +1735,7 @@ mergeGuestFavoritesButton?.addEventListener("click", () => {
 });
 
 clearDownloadHistoryButton?.addEventListener("click", clearDownloadedRecords);
+chooseDownloadDirectoryButton?.addEventListener("click", chooseDownloadDirectory);
 
 exportFavoritesButton?.addEventListener("click", exportCurrentFavorites);
 
@@ -1856,13 +2017,14 @@ function clearSelectedImages() {
   updateSelectionActions();
 }
 
-function downloadSelectedOriginals() {
-  [...selectedImages].forEach((imageId, index) => {
+async function downloadSelectedOriginals() {
+  for (const [index, imageId] of [...selectedImages].entries()) {
     const post = imageStore.get(imageId);
-    window.setTimeout(() => {
-      downloadOriginal(post);
-    }, index * 120);
-  });
+    if (index > 0) {
+      await new Promise((resolve) => window.setTimeout(resolve, 120));
+    }
+    await downloadOriginal(post);
+  }
 }
 
 async function copyTextToClipboard(text) {
@@ -2507,6 +2669,7 @@ window.addEventListener("beforeunload", saveSearchSession);
 
 async function initializeApp() {
   loadThemeSetting();
+  await setupSystemThemeSync();
   loadLanguageSetting();
   loadImageSettings();
   loadAccountSettings();
@@ -2520,6 +2683,7 @@ async function initializeApp() {
   renderBlacklistRules();
   updateMergeGuestFavoritesAction();
   await loadLanguage();
+  await loadDownloadDirectory();
   showPage("search");
   updateSelectionActions();
   setupInfiniteScroll();

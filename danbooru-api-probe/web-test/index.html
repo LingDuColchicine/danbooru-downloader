@@ -5,7 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Danbooru Downloader</title>
     <script>
-      document.documentElement.dataset.theme = localStorage.getItem("danbooruDownloader.theme") || "light";
+      (() => {
+        const themePreference = localStorage.getItem("danbooruDownloader.theme") || "system";
+        const systemTheme = window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ? "dark" : "light";
+        document.documentElement.dataset.theme = themePreference === "light" || themePreference === "dark" ? themePreference : systemTheme;
+        document.documentElement.dataset.themePreference = themePreference;
+      })();
     </script>
     <link rel="stylesheet" href="./style.css">
   </head>
@@ -76,7 +81,7 @@
             <div class="search-filter-row" aria-label="Search filters">
               <div class="filter-control">
                 <span data-i18n="search.rating">Rating</span>
-                <div class="custom-select" id="rating-filter" data-value="">
+                <div class="custom-select" id="rating-filter" data-value="g">
                   <button
                     class="custom-select-button"
                     id="rating-filter-button"
@@ -85,11 +90,11 @@
                     aria-expanded="false"
                     aria-label="Rating filter"
                   >
-                    <span id="rating-filter-label" data-i18n="search.ratingNone">None</span>
+                    <span id="rating-filter-label" data-i18n="search.ratingGeneral">General</span>
                   </button>
                   <div class="custom-select-menu" id="rating-filter-menu" role="listbox" hidden>
-                    <button class="custom-select-option active" type="button" role="option" aria-selected="true" data-rating-value="" data-i18n="search.ratingNone">None</button>
-                    <button class="custom-select-option" type="button" role="option" aria-selected="false" data-rating-value="g" data-i18n="search.ratingGeneral">General</button>
+                    <button class="custom-select-option" type="button" role="option" aria-selected="false" data-rating-value="" data-i18n="search.ratingNone">None</button>
+                    <button class="custom-select-option active" type="button" role="option" aria-selected="true" data-rating-value="g" data-i18n="search.ratingGeneral">General</button>
                     <button class="custom-select-option" type="button" role="option" aria-selected="false" data-rating-value="s" data-i18n="search.ratingSensitive">Sensitive</button>
                     <button class="custom-select-option" type="button" role="option" aria-selected="false" data-rating-value="q" data-i18n="search.ratingQuestionable">Questionable</button>
                     <button class="custom-select-option" type="button" role="option" aria-selected="false" data-rating-value="e" data-i18n="search.ratingExplicit">Explicit</button>
@@ -137,6 +142,7 @@
                   <h2 data-i18n="settings.theme">Theme</h2>
                 </div>
                 <div class="segmented-control" role="group" aria-label="Theme">
+                  <button class="segment-button" type="button" data-theme-option="system" data-i18n="settings.themeSystem">System</button>
                   <button class="segment-button" type="button" data-theme-option="light" data-i18n="settings.themeLight">Light</button>
                   <button class="segment-button" type="button" data-theme-option="dark" data-i18n="settings.themeDark">Dark</button>
                 </div>
@@ -228,6 +234,19 @@
                   <button class="segment-button" type="button" data-loading-target="detail" data-loading-mode="auto" data-i18n="settings.loadingAuto">Auto</button>
                   <button class="segment-button" type="button" data-loading-target="detail" data-loading-mode="direct" data-i18n="settings.loadingDirect">Direct</button>
                   <button class="segment-button" type="button" data-loading-target="detail" data-loading-mode="proxy" data-i18n="settings.loadingProxy">Proxy</button>
+                </div>
+              </div>
+
+              <div class="settings-row download-location-row">
+                <div>
+                  <h2 data-i18n="settings.downloadLocation">Download location</h2>
+                </div>
+                <div class="download-location-panel">
+                  <div class="download-location-value" id="download-directory-path" data-i18n="settings.downloadLocationUnavailable">Browser default</div>
+                  <button class="text-icon-button" id="choose-download-directory" type="button">
+                    <span data-i18n="settings.chooseDownloadLocation">Choose</span>
+                  </button>
+                  <p class="download-settings-status" id="download-settings-status" aria-live="polite"></p>
                 </div>
               </div>
 

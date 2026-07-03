@@ -63,6 +63,7 @@
   "settings": {
     "title": "Settings",
     "theme": "Theme",
+    "themeSystem": "System",
     "themeLight": "Light",
     "themeDark": "Dark",
     "language": "Language",
@@ -78,6 +79,9 @@
     "noAccount": "No account",
     "thumbnailLoading": "Thumbnail loading",
     "detailLoading": "Detail image loading",
+    "downloadLocation": "Download location",
+    "downloadLocationUnavailable": "Browser default",
+    "chooseDownloadLocation": "Choose",
     "loadingAuto": "Auto",
     "loadingDirect": "Direct",
     "loadingProxy": "Proxy",
@@ -108,7 +112,15 @@
   },
   "toast": {
     "copied": "Copied",
-    "addedTag": "Added tag to search"
+    "addedTag": "Added tag to search",
+    "downloaded": "Downloaded original",
+    "downloadFailed": "Download failed: {message}"
+  },
+  "download": {
+    "directoryLoaded": "Download location loaded.",
+    "directoryChanged": "Download location updated.",
+    "directoryUnavailable": "Download location is available in the desktop app.",
+    "noFileUrl": "Original file URL is unavailable."
   },
   "searchStatus": {
     "loadingImages": "Loading images...",

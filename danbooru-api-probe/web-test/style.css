@@ -599,6 +599,49 @@ button {
   width: 17px;
 }
 
+.download-location-panel {
+  align-items: center;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(220px, 1fr) auto;
+  justify-self: stretch;
+  max-width: 760px;
+  min-width: 0;
+  width: 100%;
+}
+
+.download-location-value {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  min-height: 38px;
+  min-width: 0;
+  overflow: hidden;
+  padding: 9px 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.download-settings-status {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  grid-column: 1 / -1;
+  min-height: 17px;
+  margin: -2px 0 0;
+}
+
+.download-settings-status.error {
+  color: #d94961;
+}
+
+.download-settings-status.success {
+  color: var(--green);
+}
+
 .account-status {
   color: var(--muted);
   font-size: 12px;
@@ -1890,6 +1933,15 @@ button {
   .danger-action-button {
     justify-content: center;
     justify-self: stretch;
+  }
+
+  .download-location-panel {
+    grid-template-columns: 1fr;
+    max-width: none;
+  }
+
+  .download-location-panel .text-icon-button {
+    justify-content: center;
   }
 
   .account-login-panel,
