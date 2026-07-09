@@ -22,6 +22,10 @@ const searchSentinel = document.querySelector("#search-sentinel");
 const favoritesStream = document.querySelector("#favorites-stream");
 const favoritesEmpty = document.querySelector("#favorites-empty");
 const favoritesStatus = document.querySelector("#favorites-status");
+const activeDownloadList = document.querySelector("#active-download-list");
+const activeDownloadEmpty = document.querySelector("#active-download-empty");
+const downloadedFileList = document.querySelector("#downloaded-file-list");
+const downloadedFileEmpty = document.querySelector("#downloaded-file-empty");
 const importFavoritesButton = document.querySelector("#import-favorites");
 const exportFavoritesButton = document.querySelector("#export-favorites");
 const favoritesFileInput = document.querySelector("#favorites-file-input");
@@ -46,6 +50,7 @@ const blacklistStatus = document.querySelector("#blacklist-status");
 const blacklistList = document.querySelector("#blacklist-list");
 const downloadDirectoryPath = document.querySelector("#download-directory-path");
 const chooseDownloadDirectoryButton = document.querySelector("#choose-download-directory");
+const openDownloadDirectoryButton = document.querySelector("#open-download-directory");
 const downloadSettingsStatus = document.querySelector("#download-settings-status");
 const clearDownloadHistoryButton = document.querySelector("#clear-download-history");
 const themeOptionButtons = [...document.querySelectorAll("[data-theme-option]")];
@@ -112,6 +117,8 @@ let favoritesByAccount = {};
 let downloadedPostIds = new Set();
 let blacklistRules = [];
 let activeDownloadDirectory = "";
+let downloadTaskSequence = 0;
+const activeDownloadTasks = new Map();
 let favoriteRenderRequestId = 0;
 let activeDetailPost = null;
 let toastTimer;
@@ -129,6 +136,10 @@ function showPage(pageName) {
 
   if (pageName === "favorites") {
     renderFavorites();
+  }
+
+  if (pageName === "downloads") {
+    renderDownloadPage();
   }
 }
 
@@ -250,6 +261,13 @@ async function setupSystemThemeSync() {
     } catch (error) {
       console.warn("Failed to read system theme.", error);
     }
+  }
+}
+
+function setupDownloadProgressSync() {
+  const desktopApi = getDesktopApi();
+  if (desktopApi?.onDownloadProgress) {
+    desktopApi.onDownloadProgress(updateDownloadTask);
   }
 }
 
@@ -416,6 +434,9 @@ function renderDownloadDirectory() {
   if (chooseDownloadDirectoryButton) {
     chooseDownloadDirectoryButton.disabled = !getDesktopApi()?.chooseDownloadDirectory;
   }
+  if (openDownloadDirectoryButton) {
+    openDownloadDirectoryButton.disabled = !getDesktopApi()?.openDownloadDirectory;
+  }
 }
 
 async function loadDownloadDirectory() {
@@ -454,6 +475,26 @@ async function chooseDownloadDirectory() {
     setDownloadSettingsStatus(t("download.directoryChanged", "Download location updated."), "success");
   } catch (error) {
     setDownloadSettingsStatus(error.message, "error");
+  }
+}
+
+async function openDownloadDirectory() {
+  const desktopApi = getDesktopApi();
+  if (!desktopApi?.openDownloadDirectory) {
+    showToast(t("download.directoryUnavailable", "Download location is available in the desktop app."));
+    return;
+  }
+
+  try {
+    const result = await desktopApi.openDownloadDirectory();
+    if (!result?.ok) {
+      throw new Error(result?.message || t("downloads.openFolderFailed", "Failed to open download folder."));
+    }
+
+    activeDownloadDirectory = result.directory || activeDownloadDirectory;
+    renderDownloadDirectory();
+  } catch (error) {
+    showToast(t("downloads.openFolderFailedWithMessage", "Failed to open download folder: {message}", { message: error.message }));
   }
 }
 
@@ -886,6 +927,7 @@ function addDownloadedRecord(imageId) {
   downloadedPostIds.add(normalizedId);
   saveDownloadedRecords();
   syncImageInstances(normalizedId);
+  renderDownloadPage();
   if (activeDetailPost && getPostId(activeDetailPost) === normalizedId) {
     renderDetail(activeDetailPost);
   }
@@ -900,6 +942,7 @@ function removeDownloadedRecord(imageId) {
   downloadedPostIds.delete(normalizedId);
   saveDownloadedRecords();
   syncImageInstances(normalizedId);
+  renderDownloadPage();
   if (activeDetailPost && getPostId(activeDetailPost) === normalizedId) {
     renderDetail(activeDetailPost);
   }
@@ -922,7 +965,210 @@ function clearDownloadedRecords() {
   if (activeDetailPost) {
     renderDetail(activeDetailPost);
   }
+  renderDownloadPage();
   setAccountStatus(t("account.downloadRecordsCleared", "Downloaded records cleared."), "success");
+}
+
+function getDownloadTaskStatusLabel(status, item = {}) {
+  if (status === "downloading") {
+    return t("downloads.statusDownloading", "Downloading");
+  }
+
+  if (status === "complete") {
+    return t("downloads.statusComplete", "Complete");
+  }
+
+  if (status === "failed") {
+    return t("downloads.statusFailed", "Failed");
+  }
+
+  return t("downloads.statusQueued", "Waiting");
+}
+
+function createDownloadTask(post) {
+  const postId = getPostId(post);
+  const downloadId = `${postId}-${Date.now()}-${++downloadTaskSequence}`;
+  const task = {
+    id: downloadId,
+    post,
+    postId,
+    filename: getDownloadFilename(post),
+    status: "queued",
+    downloadedBytes: 0,
+    totalBytes: Number(post.file_size || 0),
+    message: "",
+  };
+
+  activeDownloadTasks.set(downloadId, task);
+  renderDownloadPage();
+  return task;
+}
+
+function updateDownloadTask(progress) {
+  const downloadId = String(progress?.downloadId || "");
+  if (!downloadId || !activeDownloadTasks.has(downloadId)) {
+    return;
+  }
+
+  const task = activeDownloadTasks.get(downloadId);
+  activeDownloadTasks.set(downloadId, {
+    ...task,
+    filename: progress.filename || task.filename,
+    status: progress.status || task.status,
+    downloadedBytes: Number(progress.downloadedBytes ?? task.downloadedBytes) || 0,
+    totalBytes: Number(progress.totalBytes ?? task.totalBytes) || 0,
+    message: progress.message || task.message,
+  });
+  renderDownloadPage();
+}
+
+function completeDownloadTask(downloadId) {
+  if (!activeDownloadTasks.has(downloadId)) {
+    return;
+  }
+
+  const task = activeDownloadTasks.get(downloadId);
+  activeDownloadTasks.set(downloadId, {
+    ...task,
+    status: "complete",
+    downloadedBytes: task.totalBytes > 0 ? task.totalBytes : task.downloadedBytes,
+  });
+  renderDownloadPage();
+  window.setTimeout(() => {
+    activeDownloadTasks.delete(downloadId);
+    renderDownloadPage();
+  }, 5000);
+}
+
+function failDownloadTask(downloadId, message) {
+  if (!activeDownloadTasks.has(downloadId)) {
+    return;
+  }
+
+  const task = activeDownloadTasks.get(downloadId);
+  activeDownloadTasks.set(downloadId, {
+    ...task,
+    status: "failed",
+    message: message || task.message,
+  });
+  renderDownloadPage();
+}
+
+function getDownloadProgressPercent(item) {
+  if (!item.totalBytes || item.totalBytes <= 0) {
+    return item.status === "complete" ? 100 : 0;
+  }
+
+  const percent = (item.downloadedBytes / item.totalBytes) * 100;
+  if (item.downloadedBytes > 0 && percent < 1) {
+    return 1;
+  }
+
+  return Math.min(100, Math.max(0, Math.round(percent)));
+}
+
+function getDownloadSizeText(item) {
+  if (item.totalBytes > 0) {
+    return `${formatFileSize(item.downloadedBytes)} / ${formatFileSize(item.totalBytes)}`;
+  }
+
+  if (item.status === "complete") {
+    return t("downloads.unknownSize", "Unknown");
+  }
+
+  if (item.downloadedBytes > 0) {
+    return `${formatFileSize(item.downloadedBytes)} / ${t("downloads.unknownSize", "Unknown")}`;
+  }
+
+  return `0 B / ${t("downloads.unknownSize", "Unknown")}`;
+}
+
+function createDownloadInfoRow({
+  imageId,
+  status = "",
+  downloadedBytes = 0,
+  totalBytes = 0,
+  message = "",
+  className = "",
+}) {
+  const item = { status, downloadedBytes, totalBytes };
+  const isIndeterminate = status === "downloading" && totalBytes <= 0;
+  const button = document.createElement("button");
+  button.className = `download-row ${className} ${isIndeterminate ? "indeterminate" : ""}`.trim();
+  button.type = "button";
+  button.dataset.imageId = imageId;
+
+  const id = document.createElement("span");
+  id.className = "download-row-id";
+  id.textContent = `#${imageId}`;
+
+  const progressCell = document.createElement("span");
+  progressCell.className = "download-row-progress";
+
+  const progressTrack = document.createElement("span");
+  progressTrack.className = "download-progress-track";
+  const progressFill = document.createElement("span");
+  progressFill.className = "download-progress-fill";
+  progressFill.style.width = isIndeterminate ? "38%" : `${getDownloadProgressPercent(item)}%`;
+  progressTrack.append(progressFill);
+
+  const statusLabel = document.createElement("span");
+  statusLabel.className = "download-row-status";
+  statusLabel.textContent = message || getDownloadTaskStatusLabel(status, item);
+  progressCell.append(progressTrack, statusLabel);
+
+  const size = document.createElement("span");
+  size.className = "download-row-size";
+  size.textContent = getDownloadSizeText(item);
+
+  button.append(id, progressCell, size);
+  button.addEventListener("click", () => openPostById(imageId));
+  return button;
+}
+
+function renderActiveDownloadTasks() {
+  if (!activeDownloadList || !activeDownloadEmpty) {
+    return;
+  }
+
+  const tasks = [...activeDownloadTasks.values()];
+  activeDownloadList.innerHTML = "";
+  activeDownloadEmpty.hidden = tasks.length > 0;
+  tasks.forEach((task) => {
+    activeDownloadList.append(createDownloadInfoRow({
+      imageId: task.postId,
+      status: task.status,
+      downloadedBytes: task.downloadedBytes,
+      totalBytes: task.totalBytes,
+      message: task.message,
+      className: task.status,
+    }));
+  });
+}
+
+function renderDownloadedFiles() {
+  if (!downloadedFileList || !downloadedFileEmpty) {
+    return;
+  }
+
+  const downloadedIds = [...downloadedPostIds].reverse();
+  downloadedFileList.innerHTML = "";
+  downloadedFileEmpty.hidden = downloadedIds.length > 0;
+  downloadedIds.forEach((imageId) => {
+    const post = imageStore.get(imageId);
+    downloadedFileList.append(createDownloadInfoRow({
+      imageId,
+      status: "complete",
+      downloadedBytes: Number(post?.file_size || 0),
+      totalBytes: Number(post?.file_size || 0),
+      className: "completed",
+    }));
+  });
+}
+
+function renderDownloadPage() {
+  renderActiveDownloadTasks();
+  renderDownloadedFiles();
 }
 
 function getDanbooruAuthHeaders() {
@@ -1119,6 +1365,7 @@ async function loadLanguage() {
     renderBlacklistRules();
     renderSuggestions();
     renderDownloadDirectory();
+    renderDownloadPage();
     syncAllImageCards();
     updatePageDividers();
     updateSelectionActions();
@@ -1444,7 +1691,7 @@ function getDownloadFilename(post) {
   return `danbooru-${post.id}.${post.file_ext || "jpg"}`;
 }
 
-async function downloadOriginal(post) {
+async function downloadOriginal(post, existingTask = null) {
   if (!post?.file_url) {
     showToast(t("toast.downloadFailed", "Download failed: {message}", {
       message: t("download.noFileUrl", "Original file URL is unavailable."),
@@ -1452,11 +1699,14 @@ async function downloadOriginal(post) {
     return false;
   }
 
+  const task = existingTask || createDownloadTask(post);
   const desktopApi = getDesktopApi();
   if (desktopApi?.downloadOriginal) {
     try {
       const result = await desktopApi.downloadOriginal({
+        downloadId: task.id,
         fileUrl: post.file_url,
+        fileSize: post.file_size,
         filename: getDownloadFilename(post),
         postId: getPostId(post),
       });
@@ -1468,14 +1718,22 @@ async function downloadOriginal(post) {
       addDownloadedRecord(getPostId(post));
       activeDownloadDirectory = result.directory || activeDownloadDirectory;
       renderDownloadDirectory();
+      completeDownloadTask(task.id);
       showToast(t("toast.downloaded", "Downloaded original"));
       return true;
     } catch (error) {
+      failDownloadTask(task.id, error.message);
       showToast(t("toast.downloadFailed", "Download failed: {message}", { message: error.message }));
       return false;
     }
   }
 
+  updateDownloadTask({
+    downloadId: task.id,
+    status: "downloading",
+    downloadedBytes: post.file_size || 0,
+    totalBytes: post.file_size || 0,
+  });
   const link = document.createElement("a");
   link.href = post.file_url;
   link.download = getDownloadFilename(post);
@@ -1484,6 +1742,7 @@ async function downloadOriginal(post) {
   link.click();
   link.remove();
   addDownloadedRecord(getPostId(post));
+  completeDownloadTask(task.id);
   return true;
 }
 
@@ -1661,6 +1920,18 @@ function openDetail(post) {
   updateSelectionActions();
 }
 
+async function openPostById(imageId) {
+  try {
+    const cached = imageStore.get(String(imageId));
+    const post = cached || await loadFavoritePost(imageId);
+    if (post) {
+      openDetail(post);
+    }
+  } catch (error) {
+    showToast(t("downloads.openFailed", "Failed to open image: {message}", { message: error.message }));
+  }
+}
+
 function closeDetail() {
   activeDetailPost = null;
   detailPanel.classList.remove("open");
@@ -1736,6 +2007,7 @@ mergeGuestFavoritesButton?.addEventListener("click", () => {
 
 clearDownloadHistoryButton?.addEventListener("click", clearDownloadedRecords);
 chooseDownloadDirectoryButton?.addEventListener("click", chooseDownloadDirectory);
+openDownloadDirectoryButton?.addEventListener("click", openDownloadDirectory);
 
 exportFavoritesButton?.addEventListener("click", exportCurrentFavorites);
 
@@ -2018,12 +2290,30 @@ function clearSelectedImages() {
 }
 
 async function downloadSelectedOriginals() {
-  for (const [index, imageId] of [...selectedImages].entries()) {
-    const post = imageStore.get(imageId);
+  const selectedIds = [...selectedImages];
+  if (selectedIds.length === 0) {
+    return;
+  }
+
+  const queuedDownloads = selectedIds
+    .map((imageId) => imageStore.get(imageId))
+    .filter((post) => post?.file_url)
+    .map((post) => ({
+      post,
+      task: createDownloadTask(post),
+    }));
+
+  if (downloadSelectionButton) {
+    downloadSelectionButton.disabled = true;
+  }
+
+  clearSelectedImages();
+
+  for (const [index, item] of queuedDownloads.entries()) {
     if (index > 0) {
       await new Promise((resolve) => window.setTimeout(resolve, 120));
     }
-    await downloadOriginal(post);
+    await downloadOriginal(item.post, item.task);
   }
 }
 
@@ -2670,6 +2960,7 @@ window.addEventListener("beforeunload", saveSearchSession);
 async function initializeApp() {
   loadThemeSetting();
   await setupSystemThemeSync();
+  setupDownloadProgressSync();
   loadLanguageSetting();
   loadImageSettings();
   loadAccountSettings();

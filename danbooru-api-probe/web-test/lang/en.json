@@ -6,6 +6,7 @@
     "menu": "Menu",
     "search": "Search",
     "favorites": "Favorites",
+    "download": "Download",
     "settings": "Settings"
   },
   "search": {
@@ -34,6 +35,22 @@
   "selection": {
     "clear": "Clear all",
     "downloadOriginals": "Download originals"
+  },
+  "downloads": {
+    "title": "Download",
+    "active": "Downloading",
+    "history": "Downloaded",
+    "emptyActive": "No active downloads.",
+    "emptyHistory": "No downloaded files yet.",
+    "statusQueued": "Waiting",
+    "statusDownloading": "Downloading",
+    "statusComplete": "Complete",
+    "statusFailed": "Failed",
+    "unknownSize": "Unknown",
+    "openFailed": "Failed to open image: {message}",
+    "openFolder": "Open folder",
+    "openFolderFailed": "Failed to open download folder.",
+    "openFolderFailedWithMessage": "Failed to open download folder: {message}"
   },
   "detail": {
     "title": "Image details",

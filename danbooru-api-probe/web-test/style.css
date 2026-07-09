@@ -277,6 +277,11 @@ button {
   -webkit-mask-image: url("/icons/download.svg");
 }
 
+.icon-image-down {
+  mask-image: url("/icons/image-down.svg");
+  -webkit-mask-image: url("/icons/image-down.svg");
+}
+
 .icon-plus {
   mask-image: url("/icons/plus.svg");
   -webkit-mask-image: url("/icons/plus.svg");
@@ -395,6 +400,12 @@ button {
   border-color: var(--accent);
   color: var(--accent);
   box-shadow: var(--button-shadow);
+}
+
+.text-icon-button:disabled {
+  box-shadow: none;
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .text-icon-button .action-icon {
@@ -1255,6 +1266,164 @@ button {
   display: none;
 }
 
+.downloads-layout {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.download-column {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--panel-shadow);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.download-column h2 {
+  border-bottom: 1px solid var(--line);
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 760;
+  letter-spacing: 0;
+  line-height: 1.2;
+  margin: 0;
+  padding: 16px 18px;
+}
+
+.download-list {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+}
+
+.download-list:empty {
+  display: none;
+}
+
+.download-row {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--text);
+  cursor: pointer;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(88px, auto) minmax(120px, 1fr) minmax(96px, auto);
+  min-height: 54px;
+  padding: 11px 12px;
+  text-align: left;
+  transition: background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+  width: 100%;
+}
+
+.download-row:hover {
+  background: var(--hover-bg);
+  border-color: var(--accent);
+  box-shadow: var(--button-shadow);
+  transform: translateY(-1px);
+}
+
+.download-row:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.download-row-id {
+  align-self: center;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 780;
+  min-width: 0;
+}
+
+.download-row-progress {
+  align-content: center;
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.download-progress-track {
+  background: var(--surface-3);
+  border-radius: 999px;
+  display: block;
+  height: 8px;
+  overflow: hidden;
+  width: 100%;
+}
+
+.download-progress-fill {
+  background: var(--accent);
+  border-radius: inherit;
+  display: block;
+  height: 100%;
+  min-width: 0;
+  transition: width 160ms ease;
+  width: 0%;
+}
+
+.download-row.indeterminate .download-progress-fill {
+  animation: download-progress-sweep 1100ms ease-in-out infinite;
+  min-width: 38%;
+}
+
+@keyframes download-progress-sweep {
+  0% {
+    transform: translateX(-110%);
+  }
+
+  50% {
+    transform: translateX(85%);
+  }
+
+  100% {
+    transform: translateX(260%);
+  }
+}
+
+.download-row-status {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 720;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.download-row-size {
+  align-self: center;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 760;
+  justify-self: end;
+  max-width: 138px;
+  min-width: 0;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.download-row.failed {
+  border-color: var(--danger-border);
+}
+
+.download-row.failed .download-progress-fill {
+  background: var(--danger-text);
+}
+
+.download-row.complete .download-progress-fill,
+.download-row.completed .download-progress-fill {
+  background: var(--green);
+}
+
+.download-empty {
+  margin: 14px;
+  min-height: 180px;
+}
+
 .image-page {
   column-count: 4;
   column-gap: 16px;
@@ -1963,6 +2132,21 @@ button {
     grid-column: 1 / -1;
   }
 
+  .downloads-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .download-row {
+    grid-template-columns: minmax(72px, auto) minmax(0, 1fr);
+  }
+
+  .download-row-size {
+    grid-column: 1 / -1;
+    justify-self: stretch;
+    max-width: none;
+    text-align: left;
+  }
+
   .image-stream {
     gap: 10px;
     margin-top: 22px;
@@ -2018,5 +2202,13 @@ button {
 
   .image-page {
     column-count: 1;
+  }
+
+  .download-row {
+    grid-template-columns: 1fr;
+  }
+
+  .download-row-size {
+    grid-column: auto;
   }
 }

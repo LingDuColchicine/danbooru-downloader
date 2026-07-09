@@ -6,8 +6,6 @@ import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { fileURLToPath } from "node:url";
 import { basename, dirname, join, parse } from "node:path";
-import { Readable } from "node:stream";
-import { pipeline } from "node:stream/promises";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const projectRoot = dirname(here);
@@ -191,6 +189,17 @@ async function setDownloadDirectory(directory) {
   return directory;
 }
 
+async function openDownloadDirectory() {
+  const directory = await getDownloadDirectory();
+  await mkdir(directory, { recursive: true });
+  const failureMessage = await shell.openPath(directory);
+  if (failureMessage) {
+    throw new Error(failureMessage);
+  }
+
+  return directory;
+}
+
 function sanitizeFileName(fileName) {
   const cleaned = String(fileName || "")
     .replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_")
@@ -239,7 +248,15 @@ async function getAvailablePath(directory, fileName) {
   return candidate;
 }
 
-async function downloadOriginalImage(payload) {
+function getDownloadProgressPayload(payload, patch) {
+  return {
+    downloadId: String(payload?.downloadId || ""),
+    postId: String(payload?.postId || ""),
+    ...patch,
+  };
+}
+
+async function downloadOriginalImage(payload, sendProgress = () => {}) {
   const fileUrl = String(payload?.fileUrl || "");
   let parsedUrl;
   try {
@@ -270,11 +287,67 @@ async function downloadOriginalImage(payload) {
     throw new Error(`Download failed with HTTP ${response.status}.`);
   }
 
+  const headerSize = Number(response.headers.get("content-length") || 0);
+  const fallbackSize = Number(payload?.fileSize || 0);
+  const totalBytes = Number.isFinite(headerSize) && headerSize > 0 ? headerSize : fallbackSize;
+  let downloadedBytes = 0;
+  let lastProgressAt = 0;
+  const emitProgress = (patch, force = false) => {
+    const now = Date.now();
+    if (!force && now - lastProgressAt < 120) {
+      return;
+    }
+
+    lastProgressAt = now;
+    sendProgress(getDownloadProgressPayload(payload, {
+      filename: basename(filePath),
+      totalBytes,
+      downloadedBytes,
+      ...patch,
+    }));
+  };
+
+  emitProgress({ status: "downloading" }, true);
+
   if (response.body) {
-    await pipeline(Readable.fromWeb(response.body), createWriteStream(filePath));
+    const reader = response.body.getReader();
+    const output = createWriteStream(filePath);
+    const outputFinished = new Promise((resolve, reject) => {
+      output.once("finish", resolve);
+      output.once("error", reject);
+    });
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          break;
+        }
+
+        const chunk = Buffer.from(value);
+        downloadedBytes += chunk.length;
+        if (!output.write(chunk)) {
+          await once(output, "drain");
+        }
+        emitProgress({ status: "downloading" });
+      }
+
+      output.end();
+      await outputFinished;
+    } catch (error) {
+      output.destroy();
+      throw error;
+    }
   } else {
-    await writeFile(filePath, Buffer.from(await response.arrayBuffer()));
+    const buffer = Buffer.from(await response.arrayBuffer());
+    downloadedBytes = buffer.length;
+    emitProgress({ status: "downloading" }, true);
+    await writeFile(filePath, buffer);
   }
+
+  emitProgress({
+    status: "complete",
+    downloadedBytes: totalBytes > 0 ? Math.max(downloadedBytes, totalBytes) : downloadedBytes,
+  }, true);
 
   return {
     directory,
@@ -308,11 +381,28 @@ ipcMain.handle("download-directory:choose", async () => {
   return { ok: true, directory };
 });
 
-ipcMain.handle("download-original", async (_event, payload) => {
+ipcMain.handle("download-directory:open", async () => {
   try {
-    const result = await downloadOriginalImage(payload);
+    const directory = await openDownloadDirectory();
+    return { ok: true, directory };
+  } catch (error) {
+    return { ok: false, message: error.message };
+  }
+});
+
+ipcMain.handle("download-original", async (event, payload) => {
+  const sendProgress = (progress) => {
+    event.sender.send("download:progress", progress);
+  };
+
+  try {
+    const result = await downloadOriginalImage(payload, sendProgress);
     return { ok: true, ...result };
   } catch (error) {
+    sendProgress(getDownloadProgressPayload(payload, {
+      status: "failed",
+      message: error.message,
+    }));
     return {
       ok: false,
       message: error.message,

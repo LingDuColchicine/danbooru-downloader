@@ -6,6 +6,7 @@
     "menu": "菜单",
     "search": "搜索",
     "favorites": "收藏",
+    "download": "下载",
     "settings": "设置"
   },
   "search": {
@@ -34,6 +35,22 @@
   "selection": {
     "clear": "全部取消",
     "downloadOriginals": "下载原图"
+  },
+  "downloads": {
+    "title": "下载",
+    "active": "正在下载",
+    "history": "已下载",
+    "emptyActive": "当前没有下载任务。",
+    "emptyHistory": "还没有已下载文件。",
+    "statusQueued": "等待中",
+    "statusDownloading": "下载中",
+    "statusComplete": "已完成",
+    "statusFailed": "失败",
+    "unknownSize": "未知",
+    "openFailed": "打开图片失败：{message}",
+    "openFolder": "打开文件夹",
+    "openFolderFailed": "打开下载文件夹失败。",
+    "openFolderFailedWithMessage": "打开下载文件夹失败：{message}"
   },
   "detail": {
     "title": "图片详情",

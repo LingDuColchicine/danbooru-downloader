@@ -33,6 +33,10 @@
             <span class="nav-icon icon-heart" aria-hidden="true"></span>
             <span data-i18n="nav.favorites">Favorites</span>
           </button>
+          <button class="nav-button" type="button" data-page="downloads" aria-label="Download">
+            <span class="nav-icon icon-image-down" aria-hidden="true"></span>
+            <span data-i18n="nav.download">Download</span>
+          </button>
           <button class="nav-button" type="button" data-page="settings" aria-label="Settings">
             <span class="nav-icon icon-settings" aria-hidden="true"></span>
             <span data-i18n="nav.settings">Settings</span>
@@ -128,6 +132,31 @@
             <section class="image-stream favorites-stream" id="favorites-stream" aria-label="Favorite images"></section>
             <div class="stream-status" id="favorites-status" aria-live="polite"></div>
             <p class="empty-state" id="favorites-empty" data-i18n="favorites.empty">No favorite images yet.</p>
+          </div>
+        </section>
+        <section class="page-panel" data-page-panel="downloads">
+          <div class="search-workspace">
+            <div class="search-header">
+              <h1 data-i18n="downloads.title">Download</h1>
+              <button class="text-icon-button download-folder-button" id="open-download-directory" type="button">
+                <span class="action-icon icon-download" aria-hidden="true"></span>
+                <span data-i18n="downloads.openFolder">Open folder</span>
+              </button>
+            </div>
+
+            <section class="downloads-layout" aria-label="Download progress">
+              <section class="download-column" aria-label="Active downloads">
+                <h2 data-i18n="downloads.active">Downloading</h2>
+                <div class="download-list" id="active-download-list"></div>
+                <p class="empty-state download-empty" id="active-download-empty" data-i18n="downloads.emptyActive">No active downloads.</p>
+              </section>
+
+              <section class="download-column" aria-label="Downloaded files">
+                <h2 data-i18n="downloads.history">Downloaded</h2>
+                <div class="download-list" id="downloaded-file-list"></div>
+                <p class="empty-state download-empty" id="downloaded-file-empty" data-i18n="downloads.emptyHistory">No downloaded files yet.</p>
+              </section>
+            </section>
           </div>
         </section>
         <section class="page-panel" data-page-panel="settings">
