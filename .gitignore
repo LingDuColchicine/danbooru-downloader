@@ -1,7 +1,7 @@
 .agents/
 .codex/
 node_modules/
-danbooru-api-probe/dist/
+dist/
 tools/
 *.msi
 *.zip
@@ -9,7 +9,6 @@ gh-install.log
 gh-auth*.txt
 gh-device-auth.json
 gh-repo*.txt
-web-test-server.pid.txt
 *.log
 .DS_Store
 Thumbs.db

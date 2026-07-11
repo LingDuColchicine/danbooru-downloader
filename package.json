@@ -1,5 +1,5 @@
 {
-  "name": "danbooru-downloader-prototype",
+  "name": "danbooru-downloader",
   "version": "0.1.0",
   "description": "A desktop Danbooru image downloader prototype.",
   "author": "Night7zx",
@@ -8,7 +8,7 @@
   "packageManager": "pnpm@11.7.0",
   "main": "electron/main.js",
   "scripts": {
-    "web": "node web-test/server.mjs",
+    "web": "node web/server.mjs",
     "electron:dev": "electron .",
     "start": "electron .",
     "pack": "electron-builder --dir",
@@ -23,7 +23,7 @@
     },
     "files": [
       "electron/**/*",
-      "web-test/**/*",
+      "web/**/*",
       "icons/**/*",
       "package.json"
     ],

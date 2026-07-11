@@ -614,26 +614,32 @@ button {
   align-items: center;
   display: grid;
   gap: 10px;
-  grid-template-columns: minmax(220px, 1fr) auto;
+  grid-template-columns: minmax(320px, 1fr) auto;
   justify-self: stretch;
-  max-width: 760px;
+  max-width: 860px;
   min-width: 0;
   width: 100%;
 }
 
 .download-location-value {
+  align-items: center;
   background: var(--surface-2);
   border: 1px solid var(--line);
   border-radius: 10px;
   color: var(--muted);
+  display: flex;
   font-size: 13px;
   font-weight: 700;
-  min-height: 38px;
+  height: 38px;
   min-width: 0;
   overflow: hidden;
-  padding: 9px 12px;
+  padding: 0 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.download-location-panel .text-icon-button {
+  height: 38px;
 }
 
 .download-settings-status {
@@ -643,6 +649,10 @@ button {
   grid-column: 1 / -1;
   min-height: 17px;
   margin: -2px 0 0;
+}
+
+.download-settings-status:empty {
+  display: none;
 }
 
 .download-settings-status.error {
@@ -1042,6 +1052,10 @@ button {
   gap: 8px;
 }
 
+.filter-control[hidden] {
+  display: none;
+}
+
 .custom-select {
   position: relative;
 }
@@ -1331,11 +1345,25 @@ button {
 }
 
 .download-row-id {
+  align-items: center;
   align-self: center;
   color: var(--text);
+  display: inline-flex;
   font-size: 14px;
   font-weight: 780;
+  gap: 7px;
   min-width: 0;
+}
+
+.download-row-source-icon {
+  background: #ffffff;
+  border: 1px solid rgba(45, 55, 72, 0.1);
+  border-radius: 5px;
+  display: block;
+  flex: 0 0 auto;
+  height: 22px;
+  object-fit: contain;
+  width: 22px;
 }
 
 .download-row-progress {

@@ -26,6 +26,8 @@ const mimeTypes = {
   ".js": "text/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".json": "application/json; charset=utf-8",
+  ".png": "image/png",
+  ".ico": "image/x-icon",
   ".svg": "image/svg+xml; charset=utf-8",
 };
 
@@ -88,7 +90,7 @@ function getAuthFromRequest(request) {
 
 function getDanbooruHeaders(auth) {
   const headers = {
-    "User-Agent": "danbooru-web-test/0.1",
+    "User-Agent": "danbooru-downloader/0.1",
     Accept: "application/json",
   };
 
@@ -117,6 +119,11 @@ function getSafeUrl(url) {
   return safeUrl.toString();
 }
 
+function getRequestedSource(requestUrl) {
+  const source = requestUrl.searchParams.get("source") || "danbooru";
+  return source === "danbooru" ? source : "";
+}
+
 function readJsonBody(request) {
   return new Promise((resolve, reject) => {
     const chunks = [];
@@ -143,6 +150,11 @@ function readJsonBody(request) {
 
 async function handlePosts(request, response) {
   const requestUrl = new URL(request.url, `http://${request.headers.host}`);
+  const source = getRequestedSource(requestUrl);
+  if (source !== "danbooru") {
+    sendJson(response, 400, { error: "Unsupported download source" });
+    return;
+  }
   const tags = requestUrl.searchParams.get("tags") || "";
   const limit = requestUrl.searchParams.get("limit") || "10";
   const page = requestUrl.searchParams.get("page") || "1";
@@ -160,7 +172,7 @@ async function handlePosts(request, response) {
       "Content-Type": "application/json; charset=utf-8",
       "Cache-Control": "no-store",
     });
-    response.end(JSON.stringify(upstream.payload, null, 2));
+    response.end(JSON.stringify({ ...upstream.payload, source }, null, 2));
   } catch (error) {
     sendJson(response, 502, {
       error: "Danbooru request failed",
@@ -177,6 +189,11 @@ async function handlePosts(request, response) {
 
 async function handleAutocomplete(request, response) {
   const requestUrl = new URL(request.url, `http://${request.headers.host}`);
+  const source = getRequestedSource(requestUrl);
+  if (source !== "danbooru") {
+    sendJson(response, 400, { error: "Unsupported download source" });
+    return;
+  }
   const query = requestUrl.searchParams.get("search[query]") || "";
   const type = requestUrl.searchParams.get("search[type]") || "tag_query";
   const limit = requestUrl.searchParams.get("limit") || "12";
@@ -194,7 +211,7 @@ async function handleAutocomplete(request, response) {
       "Content-Type": "application/json; charset=utf-8",
       "Cache-Control": "no-store",
     });
-    response.end(JSON.stringify(upstream.payload, null, 2));
+    response.end(JSON.stringify({ ...upstream.payload, source }, null, 2));
   } catch (error) {
     sendJson(response, 502, {
       error: "Danbooru autocomplete request failed",
@@ -217,6 +234,12 @@ async function handlePostShow(request, response) {
     return;
   }
 
+  const source = getRequestedSource(requestUrl);
+  if (source !== "danbooru") {
+    sendJson(response, 400, { error: "Unsupported download source" });
+    return;
+  }
+
   const auth = getAuthFromRequest(request);
   const danbooruUrl = new URL(`https://danbooru.donmai.us/posts/${match[1]}.json`);
   applyAuthParams(danbooruUrl, auth);
@@ -227,7 +250,7 @@ async function handlePostShow(request, response) {
       "Content-Type": "application/json; charset=utf-8",
       "Cache-Control": "no-store",
     });
-    response.end(JSON.stringify(upstream.payload, null, 2));
+    response.end(JSON.stringify({ ...upstream.payload, source }, null, 2));
   } catch (error) {
     sendJson(response, 502, {
       error: "Danbooru post request failed",
@@ -626,5 +649,5 @@ const server = createServer((request, response) => {
 });
 
 server.listen(port, "127.0.0.1", () => {
-  console.log(`Danbooru web test running at http://127.0.0.1:${port}/`);
+  console.log(`Danbooru Downloader running at http://127.0.0.1:${port}/`);
 });

@@ -16,6 +16,7 @@ const ratingFilterButton = document.querySelector("#rating-filter-button");
 const ratingFilterLabel = document.querySelector("#rating-filter-label");
 const ratingFilterMenu = document.querySelector("#rating-filter-menu");
 const ratingOptionButtons = [...document.querySelectorAll("[data-rating-value]")];
+const ratingFilterControl = ratingFilter?.closest(".filter-control");
 const searchResults = document.querySelector("#search-results");
 const searchStatus = document.querySelector("#search-status");
 const searchSentinel = document.querySelector("#search-sentinel");
@@ -70,6 +71,14 @@ const categoryNames = {
   5: "meta",
 };
 
+const downloadSources = {
+  danbooru: {
+    icon: "../icons/danbooru-logo-128x128-ea111b6658173e847734.png",
+    ratings: ["", "g", "s", "q", "e"],
+    defaultRating: "g",
+  },
+};
+
 let selectedTags = [];
 let suggestions = [];
 let activeSuggestionIndex = -1;
@@ -96,6 +105,7 @@ let activeRating = defaultRating;
 let activeTheme = "system";
 let activeSystemTheme = systemThemeMediaQuery?.matches ? "dark" : "light";
 let activeLanguage = "en";
+let activeDownloadSource = "danbooru";
 let currentDictionary = {};
 const searchSessionKey = "danbooruDownloader.searchSession";
 const themeSettingsKey = "danbooruDownloader.theme";
@@ -104,7 +114,8 @@ const loadingSettingsKey = "danbooruDownloader.loadingSettings";
 const accountSettingsKey = "danbooruDownloader.accounts";
 const activeAccountKey = "danbooruDownloader.activeAccountId";
 const favoritesSettingsKey = "danbooruDownloader.favoritesByAccount";
-const downloadedRecordsKey = "danbooruDownloader.downloadedPostIds";
+const downloadedRecordsKey = "danbooruDownloader.downloadedRecords";
+const legacyDownloadedRecordsKey = "danbooruDownloader.downloadedPostIds";
 const blacklistSettingsKey = "danbooruDownloader.blacklistRules";
 const guestFavoriteAccountId = "__guest__";
 const loadingSettings = {
@@ -114,7 +125,7 @@ const loadingSettings = {
 let savedAccounts = [];
 let activeAccountId = "";
 let favoritesByAccount = {};
-let downloadedPostIds = new Set();
+let downloadedRecords = [];
 let blacklistRules = [];
 let activeDownloadDirectory = "";
 let downloadTaskSequence = 0;
@@ -178,6 +189,10 @@ function renderLanguageSettings() {
     button.classList.toggle("active", isActive);
     button.setAttribute("aria-pressed", String(isActive));
   });
+}
+
+function isDownloadSource(value) {
+  return Object.prototype.hasOwnProperty.call(downloadSources, value);
 }
 
 function isThemeMode(value) {
@@ -684,6 +699,7 @@ async function loadBlacklistSuggestions(query) {
     "search[type]": "tag_query",
     limit: "12",
   });
+  params.set("source", activeDownloadSource);
 
   try {
     const response = await fetch(`/api/autocomplete?${params}`, {
@@ -833,7 +849,7 @@ function renderBlacklistRules() {
 
 function syncAllImageCards() {
   document.querySelectorAll(".image-card").forEach((card) => {
-    const post = imageStore.get(card.dataset.imageId);
+    const post = imageStore.get(card.dataset.imageKey);
     if (post) {
       syncImageCardControls(card, post);
     }
@@ -901,67 +917,98 @@ function toggleFavorite(imageId) {
 
 function loadDownloadedRecords() {
   try {
-    const saved = JSON.parse(localStorage.getItem(downloadedRecordsKey) || "[]");
-    downloadedPostIds = new Set(normalizeFavoriteIds(saved));
+    const saved = JSON.parse(localStorage.getItem(downloadedRecordsKey) || localStorage.getItem(legacyDownloadedRecordsKey) || "[]");
+    const records = Array.isArray(saved) ? saved : [];
+    downloadedRecords = records
+      .map(normalizeDownloadedRecord)
+      .filter(Boolean);
+    downloadedRecords = downloadedRecords.filter((record, index, items) => (
+      items.findIndex((item) => getDownloadedRecordKey(item.id, item.source) === getDownloadedRecordKey(record.id, record.source)) === index
+    ));
   } catch (error) {
     console.warn("Failed to load download history.", error);
-    downloadedPostIds = new Set();
+    downloadedRecords = [];
   }
 }
 
 function saveDownloadedRecords() {
-  localStorage.setItem(downloadedRecordsKey, JSON.stringify([...downloadedPostIds]));
+  localStorage.setItem(downloadedRecordsKey, JSON.stringify(downloadedRecords));
 }
 
-function hasDownloadedRecord(imageId) {
-  const normalizedId = normalizeFavoriteId(imageId);
-  return normalizedId ? downloadedPostIds.has(normalizedId) : false;
+function getDownloadedRecordKey(imageId, source = activeDownloadSource) {
+  const id = normalizeFavoriteId(imageId);
+  return id && isDownloadSource(source) ? `${source}:${id}` : "";
 }
 
-function addDownloadedRecord(imageId) {
-  const normalizedId = normalizeFavoriteId(imageId);
-  if (!normalizedId) {
+function normalizeDownloadedRecord(value) {
+  if (typeof value === "string" || typeof value === "number") {
+    const id = normalizeFavoriteId(value);
+    return id ? { id, source: "danbooru" } : null;
+  }
+
+  const id = normalizeFavoriteId(value?.id);
+  const source = value?.source || "danbooru";
+  if (!isDownloadSource(source)) {
+    return null;
+  }
+  return id ? { id, source } : null;
+}
+
+function hasDownloadedRecord(postOrId, source = activeDownloadSource) {
+  const id = typeof postOrId === "object" ? getPostId(postOrId) : postOrId;
+  const resolvedSource = typeof postOrId === "object" ? getPostSource(postOrId) : source;
+  const key = getDownloadedRecordKey(id, resolvedSource);
+  return downloadedRecords.some((record) => getDownloadedRecordKey(record.id, record.source) === key);
+}
+
+function addDownloadedRecord(postOrId, source = activeDownloadSource) {
+  const id = typeof postOrId === "object" ? getPostId(postOrId) : normalizeFavoriteId(postOrId);
+  const resolvedSource = typeof postOrId === "object" ? getPostSource(postOrId) : source;
+  const key = getDownloadedRecordKey(id, resolvedSource);
+  if (!key || hasDownloadedRecord(id, resolvedSource)) {
     return;
   }
 
-  downloadedPostIds.add(normalizedId);
+  downloadedRecords.push({ id, source: resolvedSource });
   saveDownloadedRecords();
-  syncImageInstances(normalizedId);
+  syncImageInstances(id, resolvedSource);
   renderDownloadPage();
-  if (activeDetailPost && getPostId(activeDetailPost) === normalizedId) {
+  if (activeDetailPost && getPostStoreKey(activeDetailPost) === getPostStoreKey(id, resolvedSource)) {
     renderDetail(activeDetailPost);
   }
 }
 
-function removeDownloadedRecord(imageId) {
-  const normalizedId = normalizeFavoriteId(imageId);
-  if (!normalizedId) {
+function removeDownloadedRecord(postOrId, source = activeDownloadSource) {
+  const id = typeof postOrId === "object" ? getPostId(postOrId) : normalizeFavoriteId(postOrId);
+  const resolvedSource = typeof postOrId === "object" ? getPostSource(postOrId) : source;
+  const key = getDownloadedRecordKey(id, resolvedSource);
+  if (!key) {
     return;
   }
 
-  downloadedPostIds.delete(normalizedId);
+  downloadedRecords = downloadedRecords.filter((record) => getDownloadedRecordKey(record.id, record.source) !== key);
   saveDownloadedRecords();
-  syncImageInstances(normalizedId);
+  syncImageInstances(id, resolvedSource);
   renderDownloadPage();
-  if (activeDetailPost && getPostId(activeDetailPost) === normalizedId) {
+  if (activeDetailPost && getPostStoreKey(activeDetailPost) === getPostStoreKey(id, resolvedSource)) {
     renderDetail(activeDetailPost);
   }
 }
 
 function clearDownloadedRecords() {
-  if (downloadedPostIds.size === 0) {
+  if (downloadedRecords.length === 0) {
     setAccountStatus(t("account.noDownloadRecords", "No downloaded records to clear."), "success");
     return;
   }
 
-  if (!window.confirm(t("account.clearDownloadConfirm", "Clear {count} downloaded records? This will not delete local files.", { count: downloadedPostIds.size }))) {
+  if (!window.confirm(t("account.clearDownloadConfirm", "Clear {count} downloaded records? This will not delete local files.", { count: downloadedRecords.length }))) {
     return;
   }
 
-  const affectedIds = [...downloadedPostIds];
-  downloadedPostIds.clear();
+  const affectedRecords = [...downloadedRecords];
+  downloadedRecords = [];
   saveDownloadedRecords();
-  affectedIds.forEach(syncImageInstances);
+  affectedRecords.forEach((record) => syncImageInstances(record.id, record.source));
   if (activeDetailPost) {
     renderDetail(activeDetailPost);
   }
@@ -1085,6 +1132,7 @@ function getDownloadSizeText(item) {
 
 function createDownloadInfoRow({
   imageId,
+  source = activeDownloadSource,
   status = "",
   downloadedBytes = 0,
   totalBytes = 0,
@@ -1097,10 +1145,18 @@ function createDownloadInfoRow({
   button.className = `download-row ${className} ${isIndeterminate ? "indeterminate" : ""}`.trim();
   button.type = "button";
   button.dataset.imageId = imageId;
+  button.dataset.imageSource = source;
 
   const id = document.createElement("span");
   id.className = "download-row-id";
-  id.textContent = `#${imageId}`;
+  const sourceIcon = document.createElement("img");
+  sourceIcon.className = "download-row-source-icon";
+  sourceIcon.src = downloadSources[source]?.icon || downloadSources.danbooru.icon;
+  sourceIcon.alt = "";
+  sourceIcon.setAttribute("aria-hidden", "true");
+  const idLabel = document.createElement("span");
+  idLabel.textContent = `#${imageId}`;
+  id.append(sourceIcon, idLabel);
 
   const progressCell = document.createElement("span");
   progressCell.className = "download-row-progress";
@@ -1122,7 +1178,7 @@ function createDownloadInfoRow({
   size.textContent = getDownloadSizeText(item);
 
   button.append(id, progressCell, size);
-  button.addEventListener("click", () => openPostById(imageId));
+  button.addEventListener("click", () => openPostById(imageId, source));
   return button;
 }
 
@@ -1137,6 +1193,7 @@ function renderActiveDownloadTasks() {
   tasks.forEach((task) => {
     activeDownloadList.append(createDownloadInfoRow({
       imageId: task.postId,
+      source: getPostSource(task.post),
       status: task.status,
       downloadedBytes: task.downloadedBytes,
       totalBytes: task.totalBytes,
@@ -1151,13 +1208,14 @@ function renderDownloadedFiles() {
     return;
   }
 
-  const downloadedIds = [...downloadedPostIds].reverse();
+  const records = [...downloadedRecords].reverse();
   downloadedFileList.innerHTML = "";
-  downloadedFileEmpty.hidden = downloadedIds.length > 0;
-  downloadedIds.forEach((imageId) => {
-    const post = imageStore.get(imageId);
+  downloadedFileEmpty.hidden = records.length > 0;
+  records.forEach((record) => {
+    const post = imageStore.get(getPostStoreKey(record.id, record.source));
     downloadedFileList.append(createDownloadInfoRow({
-      imageId,
+      imageId: record.id,
+      source: record.source,
       status: "complete",
       downloadedBytes: Number(post?.file_size || 0),
       totalBytes: Number(post?.file_size || 0),
@@ -1171,7 +1229,11 @@ function renderDownloadPage() {
   renderDownloadedFiles();
 }
 
-function getDanbooruAuthHeaders() {
+function getDanbooruAuthHeaders(source = activeDownloadSource) {
+  if (source !== "danbooru") {
+    return {};
+  }
+
   const account = getActiveAccount();
   if (!account) {
     return {};
@@ -1264,15 +1326,41 @@ function setActiveAccount(accountId) {
 }
 
 function renderRatingFilter() {
+  const sourceConfig = downloadSources.danbooru;
+  const availableRatings = sourceConfig.ratings;
+  if (!availableRatings.includes(activeRating)) {
+    activeRating = sourceConfig.defaultRating;
+  }
+
+  if (ratingFilterControl) {
+    ratingFilterControl.hidden = availableRatings.length === 0;
+  }
   ratingFilter?.setAttribute("data-value", activeRating);
   ratingOptionButtons.forEach((button) => {
-    const isActive = button.dataset.ratingValue === activeRating;
+    const value = button.dataset.ratingValue || "";
+    const isAvailable = availableRatings.includes(value);
+    button.hidden = !isAvailable;
+    if (value === "s") {
+      button.textContent = t("search.ratingSensitive", "Sensitive");
+    }
+    button.setAttribute("aria-label", button.textContent);
+
+    const isActive = isAvailable && value === activeRating;
     button.classList.toggle("active", isActive);
     button.setAttribute("aria-selected", String(isActive));
     if (isActive && ratingFilterLabel) {
       ratingFilterLabel.textContent = button.textContent;
+      ratingFilterButton?.setAttribute("aria-label", button.textContent);
     }
   });
+}
+
+function getRatingSearchTerm() {
+  if (!activeRating) {
+    return "";
+  }
+
+  return `rating:${activeRating}`;
 }
 
 function closeRatingMenu() {
@@ -1531,6 +1619,7 @@ async function loadSuggestions(query) {
     "search[type]": "tag_query",
     limit: "12",
   });
+  params.set("source", activeDownloadSource);
 
   try {
     const response = await fetch(`/api/autocomplete?${params}`, {
@@ -1576,8 +1665,9 @@ function getSearchQuery(includeInput = false) {
     values.push(rawInput);
   }
 
-  if (activeRating) {
-    values.push(`rating:${activeRating}`);
+  const ratingTerm = getRatingSearchTerm();
+  if (ratingTerm) {
+    values.push(ratingTerm);
   }
 
   return values.join(" ");
@@ -1688,7 +1778,7 @@ function appendTagSection(parent, title, tags, className) {
 }
 
 function getDownloadFilename(post) {
-  return `danbooru-${post.id}.${post.file_ext || "jpg"}`;
+  return `${getPostSource(post)}-${post.id}.${post.file_ext || "jpg"}`;
 }
 
 async function downloadOriginal(post, existingTask = null) {
@@ -1709,13 +1799,14 @@ async function downloadOriginal(post, existingTask = null) {
         fileSize: post.file_size,
         filename: getDownloadFilename(post),
         postId: getPostId(post),
+        source: getPostSource(post),
       });
 
       if (!result?.ok) {
         throw new Error(result?.message || "Unknown error");
       }
 
-      addDownloadedRecord(getPostId(post));
+      addDownloadedRecord(post);
       activeDownloadDirectory = result.directory || activeDownloadDirectory;
       renderDownloadDirectory();
       completeDownloadTask(task.id);
@@ -1741,7 +1832,7 @@ async function downloadOriginal(post, existingTask = null) {
   document.body.append(link);
   link.click();
   link.remove();
-  addDownloadedRecord(getPostId(post));
+  addDownloadedRecord(post);
   completeDownloadTask(task.id);
   return true;
 }
@@ -1822,7 +1913,7 @@ function reloadImagesForLoadingTarget(target) {
 }
 
 function createDetailDownloadActions(post) {
-  const isDownloaded = hasDownloadedRecord(getPostId(post));
+  const isDownloaded = hasDownloadedRecord(post);
 
   const downloadButton = document.createElement("button");
   downloadButton.className = "detail-download-button";
@@ -1855,7 +1946,7 @@ function createDetailDownloadActions(post) {
   removeLabel.textContent = t("detail.deleteRecord", "Delete record");
   removeRecordButton.append(removeIcon, removeLabel);
   removeRecordButton.addEventListener("click", () => {
-    removeDownloadedRecord(getPostId(post));
+    removeDownloadedRecord(post);
   });
 
   actions.append(downloadButton, removeRecordButton);
@@ -1920,10 +2011,10 @@ function openDetail(post) {
   updateSelectionActions();
 }
 
-async function openPostById(imageId) {
+async function openPostById(imageId, source = activeDownloadSource) {
   try {
-    const cached = imageStore.get(String(imageId));
-    const post = cached || await loadFavoritePost(imageId);
+    const cached = imageStore.get(getPostStoreKey(imageId, source));
+    const post = cached || await loadFavoritePost(imageId, source);
     if (post) {
       openDetail(post);
     }
@@ -2222,20 +2313,31 @@ function getPostId(post) {
   return String(post.id);
 }
 
+function getPostSource(post) {
+  return isDownloadSource(post?.booru_source) ? post.booru_source : activeDownloadSource;
+}
+
+function getPostStoreKey(postOrId, source = activeDownloadSource) {
+  const id = typeof postOrId === "object" ? getPostId(postOrId) : normalizeFavoriteId(postOrId);
+  const resolvedSource = typeof postOrId === "object" ? getPostSource(postOrId) : source;
+  return id && isDownloadSource(resolvedSource) ? `${resolvedSource}:${id}` : "";
+}
+
 function getPostLabel(post) {
   return `image ${post.id}`;
 }
 
 function syncImageCardControls(card, post) {
   const imageId = getPostId(post);
+  const imageKey = getPostStoreKey(post);
   const favoriteButton = card.querySelector(".favorite-button");
   const favoriteIcon = card.querySelector(".favorite-icon");
   const selectButton = card.querySelector(".select-button");
   const selectIcon = card.querySelector(".select-button .image-action-icon");
   const downloadedIndicator = card.querySelector(".downloaded-indicator");
   const isLiked = hasFavorite(imageId);
-  const isSelected = selectedImages.has(imageId);
-  const isDownloaded = hasDownloadedRecord(imageId);
+  const isSelected = selectedImages.has(imageKey);
+  const isDownloaded = hasDownloadedRecord(post);
 
   if (favoriteButton && favoriteIcon) {
     favoriteButton.classList.toggle("liked", isLiked);
@@ -2261,10 +2363,11 @@ function syncImageCardControls(card, post) {
   }
 }
 
-function syncImageInstances(imageId) {
+function syncImageInstances(postOrId, source = activeDownloadSource) {
+  const imageKey = getPostStoreKey(postOrId, source);
   document.querySelectorAll(".image-card").forEach((card) => {
-    if (card.dataset.imageId === imageId) {
-      const post = imageStore.get(imageId);
+    if (card.dataset.imageKey === imageKey) {
+      const post = imageStore.get(imageKey);
       if (post) {
         syncImageCardControls(card, post);
       }
@@ -2283,20 +2386,25 @@ function updateSelectionActions() {
 }
 
 function clearSelectedImages() {
-  const selectedIds = [...selectedImages];
+  const selectedKeys = [...selectedImages];
   selectedImages.clear();
-  selectedIds.forEach(syncImageInstances);
+  selectedKeys.forEach((imageKey) => {
+    const post = imageStore.get(imageKey);
+    if (post) {
+      syncImageInstances(post);
+    }
+  });
   updateSelectionActions();
 }
 
 async function downloadSelectedOriginals() {
-  const selectedIds = [...selectedImages];
-  if (selectedIds.length === 0) {
+  const selectedKeys = [...selectedImages];
+  if (selectedKeys.length === 0) {
     return;
   }
 
-  const queuedDownloads = selectedIds
-    .map((imageId) => imageStore.get(imageId))
+  const queuedDownloads = selectedKeys
+    .map((imageKey) => imageStore.get(imageKey))
     .filter((post) => post?.file_url)
     .map((post) => ({
       post,
@@ -2550,11 +2658,14 @@ function removeAccount(accountId) {
 
 function createImageCard(post) {
   const imageId = getPostId(post);
-  imageStore.set(imageId, post);
+  const imageKey = getPostStoreKey(post);
+  imageStore.set(imageKey, post);
 
   const card = document.createElement("article");
   card.className = "image-card";
   card.dataset.imageId = imageId;
+  card.dataset.imageKey = imageKey;
+  card.dataset.imageSource = getPostSource(post);
 
   if (post.image_width && post.image_height) {
     card.style.aspectRatio = `${post.image_width} / ${post.image_height}`;
@@ -2647,7 +2758,7 @@ function createImageCard(post) {
     if (isLiked) {
       favoriteButton.blur();
     }
-    syncImageInstances(imageId);
+    syncImageInstances(post);
     renderFavorites();
   });
   favoriteButton.addEventListener("keydown", (event) => {
@@ -2672,11 +2783,11 @@ function createImageCard(post) {
   });
   selectButton.addEventListener("click", (event) => {
     event.stopPropagation();
-    const isSelected = selectedImages.has(imageId);
+    const isSelected = selectedImages.has(imageKey);
     if (isSelected) {
-      selectedImages.delete(imageId);
+      selectedImages.delete(imageKey);
     } else {
-      selectedImages.add(imageId);
+      selectedImages.add(imageKey);
     }
 
     selectButton.classList.toggle("selected", !isSelected);
@@ -2686,7 +2797,7 @@ function createImageCard(post) {
     if (isSelected) {
       selectButton.blur();
     }
-    syncImageInstances(imageId);
+    syncImageInstances(post);
     updateSelectionActions();
   });
   selectButton.addEventListener("keydown", (event) => {
@@ -2716,7 +2827,9 @@ function setSearchStatus(message) {
 
 function normalizePostList(payload) {
   const body = Array.isArray(payload?.body) ? payload.body : [];
-  return body.filter((post) => post?.id && post.preview_file_url);
+  return body
+    .map((post) => ({ ...post, booru_source: post?.booru_source || payload?.source || activeDownloadSource }))
+    .filter((post) => post?.id && post.preview_file_url);
 }
 
 async function loadPostPage() {
@@ -2735,6 +2848,7 @@ async function loadPostPage() {
     tags: activeSearchTags,
     limit: String(postsPerPage),
     page: String(nextPage),
+    source: activeDownloadSource,
   });
 
   try {
@@ -2756,7 +2870,7 @@ async function loadPostPage() {
     const visiblePosts = filterBlockedPosts(posts);
 
     if (visiblePosts.length > 0) {
-      posts.forEach((post) => imageStore.set(getPostId(post), post));
+      posts.forEach((post) => imageStore.set(getPostStoreKey(post), post));
       appendPostPage(searchResults, visiblePosts, nextPage);
     }
 
@@ -2864,14 +2978,16 @@ function appendPostPage(container, posts, pageNumber) {
   container.append(page, createPageDivider(pageNumber));
 }
 
-async function loadFavoritePost(imageId) {
-  const cached = imageStore.get(imageId);
+async function loadFavoritePost(imageId, source = activeDownloadSource) {
+  const imageKey = getPostStoreKey(imageId, source);
+  const cached = imageStore.get(imageKey);
   if (cached) {
     return cached;
   }
 
-  const response = await fetch(`/api/posts/${encodeURIComponent(imageId)}`, {
-    headers: getDanbooruAuthHeaders(),
+  const params = new URLSearchParams({ source });
+  const response = await fetch(`/api/posts/${encodeURIComponent(imageId)}?${params}`, {
+    headers: getDanbooruAuthHeaders(source),
   });
   const payload = await response.json();
   if (!response.ok) {
@@ -2879,8 +2995,9 @@ async function loadFavoritePost(imageId) {
   }
 
   if (payload.body?.id) {
-    imageStore.set(getPostId(payload.body), payload.body);
-    return payload.body;
+    const post = { ...payload.body, booru_source: payload.body.booru_source || payload.source || source };
+    imageStore.set(getPostStoreKey(post), post);
+    return post;
   }
 
   return null;

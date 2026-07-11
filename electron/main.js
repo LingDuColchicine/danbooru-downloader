@@ -9,7 +9,7 @@ import { basename, dirname, join, parse } from "node:path";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const projectRoot = dirname(here);
-const serverScript = join(projectRoot, "web-test", "server.mjs");
+const serverScript = join(projectRoot, "web", "server.mjs");
 const preferredServerPort = Number(process.env.DANBOORU_APP_PORT || 5174);
 const settingsFileName = "settings.json";
 
@@ -256,6 +256,10 @@ function getDownloadProgressPayload(payload, patch) {
   };
 }
 
+function isSupportedDownloadUrl(url, source) {
+  return url.hostname === "cdn.donmai.us";
+}
+
 async function downloadOriginalImage(payload, sendProgress = () => {}) {
   const fileUrl = String(payload?.fileUrl || "");
   let parsedUrl;
@@ -265,8 +269,8 @@ async function downloadOriginalImage(payload, sendProgress = () => {}) {
     throw new Error("Invalid download URL.");
   }
 
-  if (parsedUrl.protocol !== "https:" || parsedUrl.hostname !== "cdn.donmai.us") {
-    throw new Error("Only Danbooru CDN images can be downloaded.");
+  if (parsedUrl.protocol !== "https:" || !isSupportedDownloadUrl(parsedUrl, payload?.source)) {
+    throw new Error("Only supported booru images can be downloaded.");
   }
 
   const directory = await getDownloadDirectory();
