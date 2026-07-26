@@ -1,6 +1,20 @@
 # Danbooru Downloader
 
-Desktop image downloader built with Electron and the Danbooru API.
+An Electron desktop downloader for browsing, saving, and managing images from Danbooru.
+
+The application uses the [official Danbooru API](https://danbooru.donmai.us/wiki_pages/help:api) for post searches, tag autocomplete, image metadata, and optional account authentication.
+
+## Features
+
+- Browse recent uploads or search by one or more tags.
+- Tag autocomplete, rating filters, infinite scrolling, and image detail panels.
+- Download original images to a configurable local directory.
+- View active download progress and download history.
+- Local favorites, multi-select downloads, blacklist rules, and import/export of favorites.
+- Optional Danbooru account login with a username and API key.
+- Light, dark, and system themes; English and Chinese interfaces.
+
+Account credentials and local records are stored on the local device. Do not commit API keys or other private credentials to the repository.
 
 ## Project Layout
 
