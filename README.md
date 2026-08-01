@@ -1,6 +1,6 @@
 # Danbooru Downloader
 
-An Electron desktop downloader for browsing, saving, and managing images from Danbooru.
+An Electron desktop downloader for browsing, saving, and managing images from Danbooru.Created with the help of GPT.
 
 The application uses the [official Danbooru API](https://danbooru.donmai.us/wiki_pages/help:api) for post searches, tag autocomplete, image metadata, and optional account authentication.
 
