@@ -77,6 +77,14 @@
   "page": {
     "divider": "第 {page} 页"
   },
+  "image": {
+    "previewUnavailable": "预览不可用",
+    "detailUnavailable": "图片加载失败。",
+    "cdnBlocked": "Danbooru CDN 被 Cloudflare 拦截，请更换代理节点或网络路由。",
+    "proxyAuth": "当前代理需要身份验证。",
+    "proxyTimeout": "Danbooru CDN 请求超时。",
+    "proxyFailed": "无法加载 Danbooru CDN 图片。"
+  },
   "settings": {
     "title": "设置",
     "theme": "主题",
@@ -94,6 +102,15 @@
     "blacklist": "黑名单",
     "blacklistPlaceholder": "输入屏蔽标签...",
     "noAccount": "不使用账号",
+    "network": "网络",
+    "networkSystem": "跟随系统",
+    "networkDirect": "直连",
+    "networkCustom": "自定义代理",
+    "networkProxyPlaceholder": "http://127.0.0.1:7890",
+    "networkTest": "测试",
+    "networkApply": "应用",
+    "verifyDanbooru": "验证 Danbooru",
+    "networkHelp": "代理用于 Danbooru CDN 图片及原图下载，当前支持 HTTP 和 HTTPS 代理。",
     "thumbnailLoading": "缩略图加载",
     "detailLoading": "详情图加载",
     "downloadLocation": "下载位置",
@@ -104,6 +121,27 @@
     "loadingProxy": "代理",
     "downloadHistory": "下载记录",
     "clearDownloaded": "清空下载记录"
+  },
+  "network": {
+    "desktopOnly": "网络路由设置仅在桌面版中可用。",
+    "proxyRequired": "请输入 HTTP 或 HTTPS 代理地址。",
+    "testing": "正在测试 Danbooru API 和 CDN...",
+    "testPassed": "连接成功。API {apiLatency} 毫秒，CDN {cdnLatency} 毫秒。",
+    "testFailed": "连接测试失败：{message}",
+    "applying": "正在应用网络设置...",
+    "applied": "网络设置已应用。",
+    "verificationOpen": "请在弹出的 Danbooru 窗口中完成验证，然后关闭该窗口。",
+    "verificationPassed": "验证成功，Electron 会话现在可以加载 Danbooru CDN 图片。",
+    "verificationFailed": "验证后仍无法加载 CDN 图片：{message}",
+    "verificationCookieMissing": "没有找到 Cloudflare 通行 Cookie",
+    "cloudflare": "CDN 返回了 Cloudflare 验证页面",
+    "proxyAuth": "代理需要身份验证",
+    "timeout": "连接超时",
+    "invalidContent": "CDN 返回的内容不是图片",
+    "httpError": "服务器返回了 HTTP 错误",
+    "requestFailed": "请求无法建立连接",
+    "apiFailed": "Danbooru API 测试失败",
+    "cdnNotTested": "无法开始 CDN 测试"
   },
   "account": {
     "usernameApiKeyRequired": "需要填写用户名和 API Key。",

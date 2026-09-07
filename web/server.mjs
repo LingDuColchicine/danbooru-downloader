@@ -404,6 +404,7 @@ function summarizeVerificationBody(body) {
 async function handleImageProxy(request, response) {
   const requestUrl = new URL(request.url, `http://${request.headers.host}`);
   const rawUrl = requestUrl.searchParams.get("url");
+  const diagnoseOnly = requestUrl.searchParams.get("diagnose") === "1";
 
   let imageUrl;
   try {
@@ -438,8 +439,43 @@ async function handleImageProxy(request, response) {
         Accept: "*/*",
       },
     });
+    const contentType = proxyResponse.headers.get("content-type") || "";
+    const cfMitigated = proxyResponse.headers.get("cf-mitigated") || "";
+    const isImageResponse = contentType.toLowerCase().startsWith("image/");
+    const isCloudflareChallenge = cfMitigated.toLowerCase() === "challenge" || (
+      proxyResponse.status === 403 && contentType.toLowerCase().includes("text/html")
+    );
+
+    if (!proxyResponse.ok || !isImageResponse || isCloudflareChallenge) {
+      await proxyResponse.body?.cancel().catch(() => {});
+      const isProxyAuthRequired = proxyResponse.status === 407;
+      sendJson(response, 502, {
+        error: isCloudflareChallenge
+          ? "Danbooru CDN blocked by Cloudflare"
+          : isProxyAuthRequired
+            ? "Image proxy authentication required"
+          : "Danbooru CDN returned a non-image response",
+        code: isCloudflareChallenge
+          ? "DANBOORU_CDN_CLOUDFLARE_CHALLENGE"
+          : isProxyAuthRequired
+            ? "DANBOORU_CDN_PROXY_AUTH_REQUIRED"
+          : "DANBOORU_CDN_INVALID_RESPONSE",
+        upstreamStatus: proxyResponse.status,
+        contentType: contentType || null,
+        cfMitigated: cfMitigated || null,
+      });
+      return;
+    }
+
+    if (diagnoseOnly) {
+      await proxyResponse.body?.cancel().catch(() => {});
+      response.writeHead(204, { "Cache-Control": "no-store" });
+      response.end();
+      return;
+    }
+
     const headers = {
-      "Content-Type": proxyResponse.headers.get("content-type") || "application/octet-stream",
+      "Content-Type": contentType,
       "Cache-Control": "public, max-age=86400",
       "X-Image-Proxy-Cache": "MISS",
     };
@@ -449,7 +485,7 @@ async function handleImageProxy(request, response) {
       headers["Content-Length"] = contentLength;
     }
 
-    if (isCacheableImage(imageUrl) && proxyResponse.ok && headers["Content-Type"].startsWith("image/")) {
+    if (isCacheableImage(imageUrl)) {
       const imageBuffer = Buffer.from(await proxyResponse.arrayBuffer());
       headers["Content-Length"] = imageBuffer.length;
       cacheImage(cacheKey, {
@@ -461,7 +497,7 @@ async function handleImageProxy(request, response) {
       return;
     }
 
-    response.writeHead(proxyResponse.status, headers);
+    response.writeHead(200, headers);
     if (proxyResponse.body) {
       Readable.fromWeb(proxyResponse.body).pipe(response);
     } else {
@@ -469,7 +505,12 @@ async function handleImageProxy(request, response) {
     }
   } catch (error) {
     sendJson(response, 502, {
-      error: "Image proxy request failed",
+      error: error.name === "AbortError"
+        ? "Image proxy request timed out"
+        : "Image proxy request failed",
+      code: error.name === "AbortError"
+        ? "DANBOORU_CDN_REQUEST_TIMEOUT"
+        : "DANBOORU_CDN_REQUEST_FAILED",
       message: error.message,
     });
   } finally {

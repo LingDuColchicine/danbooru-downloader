@@ -57,6 +57,12 @@ const clearDownloadHistoryButton = document.querySelector("#clear-download-histo
 const themeOptionButtons = [...document.querySelectorAll("[data-theme-option]")];
 const languageOptionButtons = [...document.querySelectorAll("[data-language-option]")];
 const loadingModeButtons = [...document.querySelectorAll("[data-loading-target][data-loading-mode]")];
+const networkModeButtons = [...document.querySelectorAll("[data-network-mode]")];
+const networkProxyUrlInput = document.querySelector("#network-proxy-url");
+const testNetworkButton = document.querySelector("#test-network");
+const saveNetworkButton = document.querySelector("#save-network");
+const verifyDanbooruButton = document.querySelector("#verify-danbooru");
+const networkSettingsStatus = document.querySelector("#network-settings-status");
 const detailBackdrop = document.querySelector("#detail-backdrop");
 const detailPanel = document.querySelector("#detail-panel");
 const detailContent = document.querySelector("#detail-content");
@@ -122,6 +128,10 @@ const loadingSettings = {
   thumbnail: "auto",
   detail: "auto",
 };
+let networkSettings = {
+  mode: "system",
+  proxyUrl: "",
+};
 let savedAccounts = [];
 let activeAccountId = "";
 let favoritesByAccount = {};
@@ -168,6 +178,10 @@ function t(path, fallback = "", values = {}) {
 
 function isLoadingMode(value) {
   return value === "auto" || value === "direct" || value === "proxy";
+}
+
+function isNetworkMode(value) {
+  return value === "system" || value === "direct" || value === "custom";
 }
 
 function isLanguageMode(value) {
@@ -427,6 +441,205 @@ function setBlacklistStatus(message = "", type = "") {
 
 function getDesktopApi() {
   return globalThis.danbooruDesktop || null;
+}
+
+function setNetworkSettingsStatus(message = "", type = "") {
+  if (!networkSettingsStatus) {
+    return;
+  }
+
+  networkSettingsStatus.textContent = message;
+  networkSettingsStatus.classList.toggle("error", type === "error");
+  networkSettingsStatus.classList.toggle("success", type === "success");
+}
+
+function getDraftNetworkSettings() {
+  return {
+    mode: isNetworkMode(networkSettings.mode) ? networkSettings.mode : "system",
+    proxyUrl: String(networkProxyUrlInput?.value || networkSettings.proxyUrl || "").trim(),
+  };
+}
+
+function renderNetworkSettings() {
+  const desktopAvailable = Boolean(getDesktopApi()?.getNetworkSettings);
+  networkModeButtons.forEach((button) => {
+    const isActive = button.dataset.networkMode === networkSettings.mode;
+    button.classList.toggle("active", isActive);
+    button.setAttribute("aria-pressed", String(isActive));
+    button.disabled = !desktopAvailable;
+  });
+
+  if (networkProxyUrlInput) {
+    if (networkProxyUrlInput.value !== networkSettings.proxyUrl) {
+      networkProxyUrlInput.value = networkSettings.proxyUrl;
+    }
+    networkProxyUrlInput.disabled = !desktopAvailable || networkSettings.mode !== "custom";
+  }
+  if (testNetworkButton) {
+    testNetworkButton.disabled = !desktopAvailable;
+  }
+  if (saveNetworkButton) {
+    saveNetworkButton.disabled = !desktopAvailable;
+  }
+  if (verifyDanbooruButton) {
+    verifyDanbooruButton.disabled = !desktopAvailable;
+  }
+}
+
+async function loadNetworkSettings() {
+  const desktopApi = getDesktopApi();
+  if (!desktopApi?.getNetworkSettings) {
+    renderNetworkSettings();
+    setNetworkSettingsStatus(t("network.desktopOnly", "Network routing is available in the desktop app."));
+    return;
+  }
+
+  try {
+    const result = await desktopApi.getNetworkSettings();
+    if (result?.settings && isNetworkMode(result.settings.mode)) {
+      networkSettings = {
+        mode: result.settings.mode,
+        proxyUrl: String(result.settings.proxyUrl || ""),
+      };
+    }
+    renderNetworkSettings();
+  } catch (error) {
+    renderNetworkSettings();
+    setNetworkSettingsStatus(error.message, "error");
+  }
+}
+
+function getNetworkFailureMessage(result) {
+  const failure = result?.api?.ok ? result?.cdn : result?.api;
+  const messages = {
+    CLOUDFLARE_CHALLENGE: t("network.cloudflare", "the CDN returned a Cloudflare challenge"),
+    PROXY_AUTH_REQUIRED: t("network.proxyAuth", "the proxy requires authentication"),
+    TIMEOUT: t("network.timeout", "the connection timed out"),
+    INVALID_CONTENT: t("network.invalidContent", "the CDN returned non-image content"),
+    HTTP_ERROR: t("network.httpError", "the server returned an HTTP error"),
+    REQUEST_FAILED: t("network.requestFailed", "the request could not connect"),
+    NOT_TESTED: t("network.cdnNotTested", "the CDN test could not start"),
+  };
+  if (!result?.api?.ok && failure?.code === "OK") {
+    return t("network.apiFailed", "the Danbooru API test failed");
+  }
+  const message = messages[failure?.code]
+    || failure?.code
+    || result?.message
+    || t("network.requestFailed", "the request could not connect");
+  return failure?.status ? `${message} (HTTP ${failure.status})` : message;
+}
+
+async function testNetworkConnection() {
+  const desktopApi = getDesktopApi();
+  if (!desktopApi?.testNetworkSettings) {
+    setNetworkSettingsStatus(t("network.desktopOnly", "Network routing is available in the desktop app."), "error");
+    return;
+  }
+
+  const draft = getDraftNetworkSettings();
+  if (draft.mode === "custom" && !draft.proxyUrl) {
+    setNetworkSettingsStatus(t("network.proxyRequired", "Enter an HTTP or HTTPS proxy URL."), "error");
+    return;
+  }
+
+  testNetworkButton.disabled = true;
+  saveNetworkButton.disabled = true;
+  setNetworkSettingsStatus(t("network.testing", "Testing the Danbooru API and CDN..."));
+  try {
+    const result = await desktopApi.testNetworkSettings(draft);
+    if (!result?.ok) {
+      throw new Error(getNetworkFailureMessage(result));
+    }
+    setNetworkSettingsStatus(t("network.testPassed", "Connected. API {apiLatency} ms, CDN {cdnLatency} ms.", {
+      apiLatency: result.api.latencyMs,
+      cdnLatency: result.cdn.latencyMs,
+    }), "success");
+  } catch (error) {
+    setNetworkSettingsStatus(t("network.testFailed", "Connection test failed: {message}", {
+      message: error.message,
+    }), "error");
+  } finally {
+    testNetworkButton.disabled = false;
+    saveNetworkButton.disabled = false;
+  }
+}
+
+async function applyNetworkConnection() {
+  const desktopApi = getDesktopApi();
+  if (!desktopApi?.setNetworkSettings) {
+    setNetworkSettingsStatus(t("network.desktopOnly", "Network routing is available in the desktop app."), "error");
+    return;
+  }
+
+  const draft = getDraftNetworkSettings();
+  if (draft.mode === "custom" && !draft.proxyUrl) {
+    setNetworkSettingsStatus(t("network.proxyRequired", "Enter an HTTP or HTTPS proxy URL."), "error");
+    return;
+  }
+
+  saveSearchSession();
+  testNetworkButton.disabled = true;
+  saveNetworkButton.disabled = true;
+  setNetworkSettingsStatus(t("network.applying", "Applying network settings..."));
+  try {
+    const result = await desktopApi.setNetworkSettings(draft);
+    if (!result?.ok) {
+      throw new Error(result?.message || t("network.requestFailed", "the request could not connect"));
+    }
+    networkSettings = result.settings;
+    setNetworkSettingsStatus(t("network.applied", "Network settings applied."), "success");
+    window.location.reload();
+  } catch (error) {
+    setNetworkSettingsStatus(error.message, "error");
+    renderNetworkSettings();
+  }
+}
+
+async function verifyDanbooruSession() {
+  const desktopApi = getDesktopApi();
+  if (!desktopApi?.openDanbooruVerification) {
+    setNetworkSettingsStatus(t("network.desktopOnly", "Network routing is available in the desktop app."), "error");
+    return;
+  }
+
+  testNetworkButton.disabled = true;
+  saveNetworkButton.disabled = true;
+  verifyDanbooruButton.disabled = true;
+  setNetworkSettingsStatus(t(
+    "network.verificationOpen",
+    "Complete the verification in the Danbooru window, then close that window.",
+  ));
+
+  try {
+    const result = await desktopApi.openDanbooruVerification();
+    if (result?.pending) {
+      return;
+    }
+    if (!result?.ok) {
+      const message = result?.clearanceFound === false
+        ? t("network.verificationCookieMissing", "No Cloudflare clearance cookie was found")
+        : getNetworkFailureMessage(result);
+      throw new Error(message || result?.message);
+    }
+
+    setNetworkSettingsStatus(t(
+      "network.verificationPassed",
+      "Verification succeeded. The Electron session can load Danbooru CDN images.",
+    ), "success");
+    reloadImagesForLoadingTarget("thumbnail");
+    reloadImagesForLoadingTarget("detail");
+  } catch (error) {
+    setNetworkSettingsStatus(t(
+      "network.verificationFailed",
+      "Verification did not unlock CDN images: {message}",
+      { message: error.message || t("network.requestFailed", "the request could not connect") },
+    ), "error");
+  } finally {
+    testNetworkButton.disabled = false;
+    saveNetworkButton.disabled = false;
+    verifyDanbooruButton.disabled = false;
+  }
 }
 
 function setDownloadSettingsStatus(message = "", type = "") {
@@ -1847,33 +2060,104 @@ function getProxiedImageUrl(url) {
     return "";
   }
 
-  return `/api/image-proxy?url=${encodeURIComponent(url)}`;
+  return `/api/image-proxy?v=2&url=${encodeURIComponent(url)}`;
+}
+
+function getSessionImageUrl(url) {
+  if (!url) {
+    return "";
+  }
+
+  return getDesktopApi()?.getSessionImageUrl?.(url) || "";
+}
+
+async function diagnoseImageProxyError(proxyUrl) {
+  if (!proxyUrl) {
+    return null;
+  }
+
+  try {
+    const separator = proxyUrl.includes("?") ? "&" : "?";
+    const response = await fetch(`${proxyUrl}${separator}diagnose=1`, { cache: "no-store" });
+    if (response.status === 204) {
+      return null;
+    }
+
+    const contentType = response.headers.get("content-type") || "";
+    if (response.ok && contentType.toLowerCase().startsWith("image/")) {
+      return null;
+    }
+
+    return contentType.toLowerCase().includes("application/json")
+      ? await response.json()
+      : { code: "DANBOORU_CDN_INVALID_RESPONSE" };
+  } catch {
+    return { code: "DANBOORU_CDN_REQUEST_FAILED" };
+  }
+}
+
+function getImageLoadErrorMessage(error, kind = "preview") {
+  if (error?.code === "DANBOORU_CDN_CLOUDFLARE_CHALLENGE") {
+    return t(
+      "image.cdnBlocked",
+      "Danbooru CDN was blocked by Cloudflare. Change your proxy or network route.",
+    );
+  }
+
+  if (error?.code === "DANBOORU_CDN_PROXY_AUTH_REQUIRED") {
+    return t("image.proxyAuth", "The configured proxy requires authentication.");
+  }
+
+  if (error?.code === "DANBOORU_CDN_REQUEST_TIMEOUT") {
+    return t("image.proxyTimeout", "The Danbooru CDN request timed out.");
+  }
+
+  if (error) {
+    return t("image.proxyFailed", "Danbooru CDN image could not be loaded.");
+  }
+
+  return kind === "detail"
+    ? t("image.detailUnavailable", "Image failed to load.")
+    : t("image.previewUnavailable", "Preview unavailable");
 }
 
 function setImageWithProxyFallback(image, sourceUrl, mode, onLoad, onFinalError) {
-  let usingProxy = false;
+  const proxyUrl = getProxiedImageUrl(sourceUrl);
+  const sessionUrl = getSessionImageUrl(sourceUrl);
+  const attempts = mode === "proxy"
+    ? [proxyUrl]
+    : mode === "direct"
+      ? [sourceUrl]
+      : sessionUrl
+        ? [sessionUrl, proxyUrl]
+        : [sourceUrl, proxyUrl];
+  let attemptIndex = 0;
   image.classList.remove("image-loaded");
   image.dataset.sourceUrl = sourceUrl;
-  image.dataset.proxyUrl = getProxiedImageUrl(sourceUrl);
+  image.dataset.proxyUrl = proxyUrl;
+  image.dataset.sessionUrl = sessionUrl;
 
   image.onload = () => {
     image.classList.add("image-loaded");
     onLoad?.();
   };
 
-  image.onerror = () => {
+  image.onerror = async () => {
     image.classList.remove("image-loaded");
 
-    if (mode === "auto" && !usingProxy) {
-      usingProxy = true;
-      image.src = image.dataset.proxyUrl;
+    if (attemptIndex < attempts.length - 1) {
+      attemptIndex += 1;
+      image.src = attempts[attemptIndex];
       return;
     }
 
-    onFinalError?.();
+    const proxyError = attempts[attemptIndex] === proxyUrl
+      ? await diagnoseImageProxyError(image.dataset.proxyUrl)
+      : null;
+    onFinalError?.(proxyError);
   };
 
-  image.src = mode === "proxy" ? image.dataset.proxyUrl : sourceUrl;
+  image.src = attempts[attemptIndex];
 }
 
 function reloadImagesForLoadingTarget(target) {
@@ -1886,9 +2170,12 @@ function reloadImagesForLoadingTarget(target) {
       }
 
       card.classList.remove("thumbnail-load-failed");
+      delete card.dataset.previewError;
       setImageWithProxyFallback(image, sourceUrl, loadingSettings.thumbnail, () => {
         card.classList.remove("thumbnail-load-failed");
-      }, () => {
+        delete card.dataset.previewError;
+      }, (error) => {
+        card.dataset.previewError = getImageLoadErrorMessage(error, "preview");
         card.classList.add("thumbnail-load-failed");
       });
     });
@@ -1904,9 +2191,12 @@ function reloadImagesForLoadingTarget(target) {
     }
 
     imageWrap.classList.remove("image-load-failed");
+    delete imageWrap.dataset.imageError;
     setImageWithProxyFallback(image, sourceUrl, loadingSettings.detail, () => {
       imageWrap.classList.remove("image-load-failed");
-    }, () => {
+      delete imageWrap.dataset.imageError;
+    }, (error) => {
+      imageWrap.dataset.imageError = getImageLoadErrorMessage(error, "detail");
       imageWrap.classList.add("image-load-failed");
     });
   }
@@ -1972,7 +2262,9 @@ function renderDetail(post) {
     image.referrerPolicy = "no-referrer";
     setImageWithProxyFallback(image, imageUrl, loadingSettings.detail, () => {
       imageWrap.classList.remove("image-load-failed");
-    }, () => {
+      delete imageWrap.dataset.imageError;
+    }, (error) => {
+      imageWrap.dataset.imageError = getImageLoadErrorMessage(error, "detail");
       imageWrap.classList.add("image-load-failed");
     });
     imageWrap.append(image);
@@ -2067,6 +2359,28 @@ loadingModeButtons.forEach((button) => {
     reloadImagesForLoadingTarget(target);
   });
 });
+
+networkModeButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    const mode = button.dataset.networkMode;
+    if (!isNetworkMode(mode)) {
+      return;
+    }
+    networkSettings.proxyUrl = String(networkProxyUrlInput?.value || networkSettings.proxyUrl || "");
+    networkSettings.mode = mode;
+    setNetworkSettingsStatus("");
+    renderNetworkSettings();
+  });
+});
+
+networkProxyUrlInput?.addEventListener("input", () => {
+  networkSettings.proxyUrl = networkProxyUrlInput.value;
+  setNetworkSettingsStatus("");
+});
+
+testNetworkButton?.addEventListener("click", testNetworkConnection);
+saveNetworkButton?.addEventListener("click", applyNetworkConnection);
+verifyDanbooruButton?.addEventListener("click", verifyDanbooruSession);
 
 addAccountButton?.addEventListener("click", addAccount);
 
@@ -2680,11 +2994,14 @@ function createImageCard(post) {
     thumbnail.referrerPolicy = "no-referrer";
     setImageWithProxyFallback(thumbnail, post.preview_file_url, loadingSettings.thumbnail, () => {
       card.classList.remove("thumbnail-load-failed");
-    }, () => {
+      delete card.dataset.previewError;
+    }, (error) => {
+      card.dataset.previewError = getImageLoadErrorMessage(error, "preview");
       card.classList.add("thumbnail-load-failed");
     });
     card.append(thumbnail);
   } else {
+    card.dataset.previewError = getImageLoadErrorMessage(null, "preview");
     card.classList.add("thumbnail-load-failed");
   }
 
@@ -3091,6 +3408,7 @@ async function initializeApp() {
   renderBlacklistRules();
   updateMergeGuestFavoritesAction();
   await loadLanguage();
+  await loadNetworkSettings();
   await loadDownloadDirectory();
   showPage("search");
   updateSelectionActions();

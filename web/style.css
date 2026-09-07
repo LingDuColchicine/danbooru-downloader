@@ -519,6 +519,82 @@ button {
   box-shadow: 0 0 0 4px var(--focus-ring);
 }
 
+.network-settings-row {
+  align-items: start;
+  grid-template-columns: minmax(180px, 0.85fr) minmax(520px, 1.2fr);
+  padding-right: 34px;
+}
+
+.network-settings-panel {
+  display: grid;
+  gap: 10px;
+  justify-self: stretch;
+  max-width: 760px;
+  min-width: 0;
+  width: 100%;
+}
+
+.network-mode-control {
+  justify-self: start;
+}
+
+.network-mode-control .segment-button:last-child {
+  min-width: 112px;
+}
+
+.network-proxy-row {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(260px, 1fr) auto auto;
+  min-width: 0;
+}
+
+.network-proxy-row .text-icon-button {
+  height: 38px;
+  justify-content: center;
+  min-width: 74px;
+}
+
+.network-proxy-row .primary-settings-button {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.network-verification-button {
+  justify-content: center;
+  justify-self: start;
+  min-height: 38px;
+}
+
+.network-settings-help,
+.network-settings-status {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.45;
+  margin: 0 2px;
+}
+
+.network-settings-status {
+  font-size: 12px;
+  font-weight: 700;
+  min-height: 17px;
+}
+
+.network-settings-status:empty {
+  display: none;
+}
+
+.network-settings-status.error {
+  color: #d94961;
+}
+
+.network-settings-status.success {
+  color: var(--green);
+}
+
 .account-add-button {
   background: var(--accent-soft);
   color: var(--accent);
@@ -1259,7 +1335,9 @@ button {
 .image-stream {
   display: grid;
   gap: 12px;
+  grid-template-columns: minmax(0, 1fr);
   margin-top: 28px;
+  min-width: 0;
   width: 100%;
 }
 
@@ -1455,6 +1533,8 @@ button {
 .image-page {
   column-count: 4;
   column-gap: 16px;
+  max-width: 100%;
+  min-width: 0;
   width: 100%;
 }
 
@@ -1522,7 +1602,7 @@ button {
 .thumbnail-load-failed::after {
   align-items: center;
   color: var(--muted);
-  content: "Preview unavailable";
+  content: attr(data-preview-error);
   display: flex;
   font-size: 13px;
   font-weight: 740;
@@ -1901,7 +1981,7 @@ button {
 .detail-image-wrap.image-load-failed::after {
   background: var(--surface-2);
   color: var(--muted);
-  content: "Image failed to load: " attr(data-image-url);
+  content: attr(data-image-error);
   display: block;
   font-size: 13px;
   font-weight: 740;
@@ -2142,14 +2222,24 @@ button {
   }
 
   .account-login-panel,
-  .blacklist-panel {
+  .blacklist-panel,
+  .network-settings-panel {
     max-width: none;
     min-width: 0;
   }
 
   .account-settings-row,
-  .blacklist-settings-row {
+  .blacklist-settings-row,
+  .network-settings-row {
     padding-right: 18px;
+  }
+
+  .network-proxy-row {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .network-proxy-row .settings-input {
+    grid-column: 1 / -1;
   }
 
   .account-input-row {

@@ -77,6 +77,14 @@
   "page": {
     "divider": "Page {page}"
   },
+  "image": {
+    "previewUnavailable": "Preview unavailable",
+    "detailUnavailable": "Image failed to load.",
+    "cdnBlocked": "Danbooru CDN was blocked by Cloudflare. Change your proxy or network route.",
+    "proxyAuth": "The configured proxy requires authentication.",
+    "proxyTimeout": "The Danbooru CDN request timed out.",
+    "proxyFailed": "Danbooru CDN image could not be loaded."
+  },
   "settings": {
     "title": "Settings",
     "theme": "Theme",
@@ -94,6 +102,15 @@
     "blacklist": "Blacklist",
     "blacklistPlaceholder": "Type blocked tags...",
     "noAccount": "No account",
+    "network": "Network",
+    "networkSystem": "System",
+    "networkDirect": "Direct",
+    "networkCustom": "Custom proxy",
+    "networkProxyPlaceholder": "http://127.0.0.1:7890",
+    "networkTest": "Test",
+    "networkApply": "Apply",
+    "verifyDanbooru": "Verify Danbooru",
+    "networkHelp": "The proxy is used for Danbooru CDN images and original downloads. HTTP and HTTPS proxies are supported.",
     "thumbnailLoading": "Thumbnail loading",
     "detailLoading": "Detail image loading",
     "downloadLocation": "Download location",
@@ -104,6 +121,27 @@
     "loadingProxy": "Proxy",
     "downloadHistory": "Download history",
     "clearDownloaded": "Clear downloaded records"
+  },
+  "network": {
+    "desktopOnly": "Network routing is available in the desktop app.",
+    "proxyRequired": "Enter an HTTP or HTTPS proxy URL.",
+    "testing": "Testing the Danbooru API and CDN...",
+    "testPassed": "Connected. API {apiLatency} ms, CDN {cdnLatency} ms.",
+    "testFailed": "Connection test failed: {message}",
+    "applying": "Applying network settings...",
+    "applied": "Network settings applied.",
+    "verificationOpen": "Complete the verification in the Danbooru window, then close that window.",
+    "verificationPassed": "Verification succeeded. The Electron session can load Danbooru CDN images.",
+    "verificationFailed": "Verification did not unlock CDN images: {message}",
+    "verificationCookieMissing": "No Cloudflare clearance cookie was found",
+    "cloudflare": "the CDN returned a Cloudflare challenge",
+    "proxyAuth": "the proxy requires authentication",
+    "timeout": "the connection timed out",
+    "invalidContent": "the CDN returned non-image content",
+    "httpError": "the server returned an HTTP error",
+    "requestFailed": "the request could not connect",
+    "apiFailed": "the Danbooru API test failed",
+    "cdnNotTested": "the CDN test could not start"
   },
   "account": {
     "usernameApiKeyRequired": "Username and API key are required.",

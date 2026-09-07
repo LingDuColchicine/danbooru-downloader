@@ -244,6 +244,37 @@
                 </div>
               </div>
 
+              <div class="settings-row network-settings-row">
+                <div>
+                  <h2 data-i18n="settings.network">Network</h2>
+                </div>
+                <div class="network-settings-panel">
+                  <div class="segmented-control network-mode-control" role="group" aria-label="Network mode">
+                    <button class="segment-button" type="button" data-network-mode="system" data-i18n="settings.networkSystem">System</button>
+                    <button class="segment-button" type="button" data-network-mode="direct" data-i18n="settings.networkDirect">Direct</button>
+                    <button class="segment-button" type="button" data-network-mode="custom" data-i18n="settings.networkCustom">Custom proxy</button>
+                  </div>
+                  <div class="network-proxy-row">
+                    <input
+                      id="network-proxy-url"
+                      class="settings-input"
+                      type="url"
+                      inputmode="url"
+                      autocomplete="off"
+                      spellcheck="false"
+                      data-i18n-placeholder="settings.networkProxyPlaceholder"
+                      placeholder="http://127.0.0.1:7890"
+                      aria-label="Proxy URL"
+                    >
+                    <button class="text-icon-button" id="test-network" type="button" data-i18n="settings.networkTest">Test</button>
+                    <button class="text-icon-button primary-settings-button" id="save-network" type="button" data-i18n="settings.networkApply">Apply</button>
+                  </div>
+                  <button class="text-icon-button network-verification-button" id="verify-danbooru" type="button" data-i18n="settings.verifyDanbooru">Verify Danbooru</button>
+                  <p class="network-settings-help" data-i18n="settings.networkHelp">The proxy is used for Danbooru CDN images and original downloads. HTTP and HTTPS proxies are supported.</p>
+                  <p class="network-settings-status" id="network-settings-status" aria-live="polite"></p>
+                </div>
+              </div>
+
               <div class="settings-row">
                 <div>
                   <h2 data-i18n="settings.thumbnailLoading">Thumbnail loading</h2>
