@@ -22,6 +22,11 @@ Account credentials and local records are stored on the local device. Do not com
 - `web/`: application UI and local API proxy
 - `icons/`: UI and source icons
 - `dist/`: packaged macOS and Windows test artifacts
+- `android/`: native Kotlin / Jetpack Compose Android application
+
+## Android Preview
+
+Open the `android/` directory in Android Studio and run the `app` configuration on Android 8.0 or newer. The preview provides Search, Favorites, Download, and Settings pages with Material 3 bottom navigation and the desktop SVG icon designs. API search and downloads are not connected yet. See [Android setup and testing](android/README.md).
 
 ## Run
 
