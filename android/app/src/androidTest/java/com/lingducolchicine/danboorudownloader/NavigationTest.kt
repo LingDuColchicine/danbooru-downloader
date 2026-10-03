@@ -4,14 +4,15 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performImeAction
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Rule
@@ -25,11 +26,12 @@ class NavigationTest {
 
     @Test
     fun tabsSwitchAndSearchSurvivesActivityRecreation() {
-        searchEntry("Search tags").performClick()
-        searchInput().assertIsFocused()
-        searchInput().performTextInput("landscape")
-        compose.onNodeWithContentDescription("Close search").performClick()
-        searchEntry("landscape").assertIsDisplayed()
+        collapsedSearchInput().performClick()
+        expandedSearchInput().assertIsFocused()
+        compose.onNodeWithText("Example tags").assertIsDisplayed()
+        compose.onNode(hasText("landscape") and hasClickAction() and hasAnyAncestor(isDialog()))
+            .performClick()
+        collapsedSearchInput().assertTextContains("landscape")
 
         tab("Favorites").performClick()
         tab("Favorites").assertIsSelected()
@@ -49,19 +51,26 @@ class NavigationTest {
         tab("Settings").assertIsSelected()
         compose.onNodeWithText("Dark").assertIsSelected()
         tab("Search").performClick()
-        searchEntry("landscape").performClick()
-        searchInput().assertTextContains("landscape")
-        compose.onNodeWithContentDescription("Clear search").performClick()
-        compose.onNodeWithContentDescription("Clear search").assertDoesNotExist()
-        searchInput().performImeAction()
-        searchInput().assertIsDisplayed()
-        compose.onNodeWithContentDescription("Close search").performClick()
-        searchEntry("Search tags").assertIsDisplayed()
+        collapsedSearchInput().assertTextContains("landscape")
+        collapsedSearchInput().performClick()
+        expandedSearchInput().assertTextContains("landscape")
+        expandedIcon("Clear search").performClick()
+        expandedIcon("Clear search").assertDoesNotExist()
+        expandedSearchInput().performImeAction()
+        collapsedSearchInput().assertIsDisplayed()
+        collapsedSearchInput().performClick()
+        expandedIcon("Close search").performClick()
+        collapsedSearchInput().assertIsDisplayed()
     }
 
     private fun tab(label: String) = compose.onNode(hasText(label) and hasClickAction())
 
-    private fun searchEntry(label: String) = compose.onNode(hasText(label) and hasClickAction())
+    private fun collapsedSearchInput() =
+        compose.onNode(hasSetTextAction() and !hasAnyAncestor(isDialog()))
 
-    private fun searchInput() = compose.onNode(hasSetTextAction())
+    private fun expandedSearchInput() =
+        compose.onNode(hasSetTextAction() and hasAnyAncestor(isDialog()))
+
+    private fun expandedIcon(label: String) =
+        compose.onNode(hasContentDescription(label) and hasAnyAncestor(isDialog()))
 }

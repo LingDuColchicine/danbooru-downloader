@@ -9,9 +9,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.updateTransition
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -25,58 +24,54 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.input.TextFieldState
-import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.foundation.text.input.rememberTextFieldState
+import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
+import androidx.compose.material3.ExpandedFullScreenSearchBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
+import androidx.compose.material3.SearchBar
+import androidx.compose.material3.SearchBarDefaults
+import androidx.compose.material3.SearchBarValue
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
+import androidx.compose.material3.rememberSearchBarState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -136,42 +131,22 @@ private fun DanbooruTheme(darkTheme: Boolean, content: @Composable () -> Unit) {
 @Composable
 internal fun DownloaderApp(theme: String, onThemeChange: (String) -> Unit) {
     var selectedPage by rememberSaveable { mutableStateOf(Page.Search.name) }
-    var searchOpen by rememberSaveable { mutableStateOf(false) }
     val searchTags = rememberTextFieldState()
     val page = Page.valueOf(selectedPage)
     val focusManager = LocalFocusManager.current
-    val searchTransition = updateTransition(searchOpen, label = "Search page")
 
-    BackHandler(enabled = searchOpen) {
-        focusManager.clearFocus()
-        searchOpen = false
-    }
-    BackHandler(enabled = !searchOpen && page != Page.Search) {
+    BackHandler(enabled = page != Page.Search) {
         focusManager.clearFocus()
         selectedPage = Page.Search.name
     }
 
-    searchTransition.AnimatedContent(modifier = Modifier.fillMaxSize()) { open ->
-        if (open) {
-            SearchEditorPage(
-                tags = searchTags,
-                focusWhenReady = !searchTransition.isRunning,
-                onClose = {
-                    focusManager.clearFocus()
-                    searchOpen = false
-                },
-            )
-        } else {
-            MainScaffold(
-                page = page,
-                tags = searchTags,
-                theme = theme,
-                onThemeChange = onThemeChange,
-                onSelectPage = { selectedPage = it.name },
-                onOpenSearch = { searchOpen = true },
-            )
-        }
-    }
+    MainScaffold(
+        page = page,
+        tags = searchTags,
+        theme = theme,
+        onThemeChange = onThemeChange,
+        onSelectPage = { selectedPage = it.name },
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -182,7 +157,6 @@ private fun MainScaffold(
     theme: String,
     onThemeChange: (String) -> Unit,
     onSelectPage: (Page) -> Unit,
-    onOpenSearch: () -> Unit,
 ) {
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -224,7 +198,7 @@ private fun MainScaffold(
                 verticalArrangement = Arrangement.spacedBy(24.dp),
             ) {
                 when (page) {
-                    Page.Search -> SearchPage(tags, onOpen = onOpenSearch)
+                    Page.Search -> SearchPage(tags)
                     Page.Favorites -> EmptyState(
                         icon = R.drawable.ic_heart,
                         title = R.string.favorites_empty_title,
@@ -238,24 +212,76 @@ private fun MainScaffold(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SearchPage(tags: TextFieldState, onOpen: () -> Unit) {
-    Surface(
-        onClick = onOpen,
-        modifier = Modifier.fillMaxWidth().height(56.dp),
-        shape = CircleShape,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(painterResource(R.drawable.ic_search), contentDescription = null)
-            Spacer(Modifier.width(16.dp))
+private fun SearchPage(tags: TextFieldState) {
+    val searchBarState = rememberSearchBarState()
+    val scope = rememberCoroutineScope()
+    val inputField = @Composable {
+        SearchBarDefaults.InputField(
+            textFieldState = tags,
+            searchBarState = searchBarState,
+            onSearch = { scope.launch { searchBarState.animateToCollapsed() } },
+            placeholder = { Text(stringResource(R.string.search_tags)) },
+            leadingIcon = {
+                if (searchBarState.currentValue == SearchBarValue.Expanded) {
+                    IconButton(onClick = { scope.launch { searchBarState.animateToCollapsed() } }) {
+                        Icon(
+                            painterResource(R.drawable.ic_chevron_right),
+                            contentDescription = stringResource(R.string.close_search),
+                            modifier = Modifier.rotate(180f),
+                        )
+                    }
+                } else {
+                    Icon(painterResource(R.drawable.ic_search), contentDescription = null)
+                }
+            },
+            trailingIcon = {
+                if (tags.text.isNotEmpty()) {
+                    IconButton(onClick = { tags.setTextAndPlaceCursorAtEnd("") }) {
+                        Icon(painterResource(R.drawable.ic_x), stringResource(R.string.clear_search))
+                    }
+                }
+            },
+        )
+    }
+
+    SearchBar(state = searchBarState, inputField = inputField, modifier = Modifier.fillMaxWidth())
+    ExpandedFullScreenSearchBar(state = searchBarState, inputField = inputField) {
+        val query = tags.text.toString().trim()
+        val examples = listOf("landscape", "scenery", "clouds", "night", "cat", "1girl")
+            .filter { query.isEmpty() || it.contains(query, ignoreCase = true) }
+        Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
             Text(
-                tags.text.toString().ifEmpty { stringResource(R.string.search_tags) },
-                color = if (tags.text.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant
-                else MaterialTheme.colorScheme.onSurface,
+                stringResource(R.string.example_tags),
+                modifier = Modifier.padding(start = 24.dp, top = 24.dp, bottom = 8.dp),
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            examples.forEach { tag ->
+                ListItem(
+                    headlineContent = { Text(tag) },
+                    leadingContent = {
+                        Icon(painterResource(R.drawable.ic_search), contentDescription = null)
+                    },
+                    modifier = Modifier.clickable {
+                        tags.setTextAndPlaceCursorAtEnd(tag)
+                        scope.launch { searchBarState.animateToCollapsed() }
+                    },
+                )
+            }
+            if (examples.isEmpty()) {
+                Text(
+                    stringResource(R.string.no_matching_examples),
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Text(
+                stringResource(R.string.search_preview_note),
+                modifier = Modifier.padding(24.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
@@ -265,71 +291,6 @@ private fun SearchPage(tags: TextFieldState, onOpen: () -> Unit) {
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
     EmptyState(R.drawable.ic_search, R.string.search_empty_title, R.string.search_empty_body)
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun SearchEditorPage(tags: TextFieldState, focusWhenReady: Boolean, onClose: () -> Unit) {
-    val focusRequester = remember { FocusRequester() }
-    val focusManager = LocalFocusManager.current
-    val keyboardController = LocalSoftwareKeyboardController.current
-    LaunchedEffect(focusWhenReady) {
-        if (focusWhenReady) focusRequester.requestFocus()
-    }
-
-    Scaffold(
-        modifier = Modifier.fillMaxSize(),
-        topBar = {
-            TopAppBar(
-                navigationIcon = {
-                    IconButton(onClick = onClose) {
-                        Icon(
-                            painterResource(R.drawable.ic_chevron_right),
-                            stringResource(R.string.close_search),
-                            modifier = Modifier.rotate(180f),
-                        )
-                    }
-                },
-                title = {
-                    TextField(
-                        state = tags,
-                        modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
-                        placeholder = { Text(stringResource(R.string.search_tags)) },
-                        leadingIcon = {
-                            Icon(painterResource(R.drawable.ic_search), contentDescription = null)
-                        },
-                        trailingIcon = {
-                            if (tags.text.isNotEmpty()) {
-                                IconButton(onClick = { tags.edit { replace(0, length, "") } }) {
-                                    Icon(painterResource(R.drawable.ic_x), stringResource(R.string.clear_search))
-                                }
-                            }
-                        },
-                        lineLimits = TextFieldLineLimits.SingleLine,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                        onKeyboardAction = {
-                            keyboardController?.hide()
-                            focusManager.clearFocus()
-                        },
-                        shape = CircleShape,
-                        colors = TextFieldDefaults.colors(
-                            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                            focusedIndicatorColor = Color.Transparent,
-                            unfocusedIndicatorColor = Color.Transparent,
-                        ),
-                    )
-                },
-            )
-        },
-    ) { innerPadding ->
-        Text(
-            stringResource(R.string.search_preview_note),
-            modifier = Modifier.padding(innerPadding).padding(24.dp),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
 }
 
 @Composable

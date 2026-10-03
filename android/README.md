@@ -22,13 +22,13 @@ The APK is written to `app/build/outputs/apk/debug/app-debug.apk`.
 
 - Switching pages, editing/clearing tags, and changing appearance work.
 - Selected page and search text survive activity recreation.
-- Search has a contained, tappable Material 3 entry that opens a dedicated search page. The page uses Compose's default `AnimatedContent` transition and focuses the text field after the transition. The close button or Back returns to the four-tab layout; the keyboard Search action dismisses the keyboard.
+- Search uses Material 3 1.4.0 `SearchBar` and `ExpandedFullScreenSearchBar` with the library's default expand/collapse animation. The expanded view shows filterable example tags below the input. Tap one to fill the query and collapse the view; the close button, Back, or keyboard Search action also collapses it.
 - Favorites and downloads show empty states.
 - API search, account login, favorites storage, and actual downloads are not connected yet.
 - Text lives in `app/src/main/res/values/strings.xml` for later Chinese localization.
 - This application has no Electron, Node server, HTML, or WebView.
 
-The search entry and page stay in one Compose window, avoiding a new dialog while the keyboard opens. Material 3 is provided by the Compose BOM. The Android build uses AGP 9.1.1, Gradle 9.3.1, and built-in Kotlin.
+The expanded search view is Material 3's full-screen dialog. Example tags are local preview data; they do not query Danbooru. Material 3 is provided by the Compose BOM. The Android build uses AGP 9.1.1, Gradle 9.3.1, and built-in Kotlin.
 
 ## Desktop icons
 
@@ -52,4 +52,4 @@ With a phone or emulator connected:
 .\gradlew.bat connectedDebugAndroidTest
 ```
 
-The instrumentation test checks the search page transition, focus, closing, clearing, and the keyboard Search action, switches all four tabs, and checks that page selection and search input survive activity recreation.
+The instrumentation test checks search expansion, example selection, closing, clearing, and the keyboard Search action, switches all four tabs, and checks that page selection and search input survive activity recreation.

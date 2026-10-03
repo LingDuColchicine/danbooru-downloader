@@ -8,6 +8,8 @@
     <string name="search_tags">Search tags</string>
     <string name="clear_search">Clear search</string>
     <string name="close_search">Close search</string>
+    <string name="example_tags">Example tags</string>
+    <string name="no_matching_examples">No matching example tags</string>
     <string name="search_empty_title">Explore Danbooru</string>
     <string name="search_empty_body">Find images by tags and save your favorites.</string>
     <string name="search_preview_note">Image search is not available in this preview.</string>
