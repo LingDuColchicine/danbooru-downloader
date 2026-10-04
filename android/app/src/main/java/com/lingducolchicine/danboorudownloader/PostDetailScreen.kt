@@ -313,12 +313,18 @@ private fun formatFileSize(bytes: Long): String = when {
     else -> "$bytes B"
 }
 
-private fun enqueueOriginalDownload(context: Context, post: PostDetail) {
-    val url = requireNotNull(post.fileUrl)
-    val extension = post.fileExt.lowercase(Locale.ROOT).takeIf { it.matches(Regex("[a-z0-9]{1,8}")) } ?: "jpg"
-    val filename = "DanbooruDownloader-${post.id}-${System.currentTimeMillis()}.$extension"
+internal fun enqueueOriginalDownload(context: Context, post: PostDetail) {
+    enqueueOriginalDownload(context, post.id, requireNotNull(post.fileUrl), post.fileExt)
+}
+
+internal fun enqueueOriginalDownload(context: Context, id: Long, url: String, fileExt: String) {
+    val extension = fileExt.lowercase(Locale.ROOT).takeIf { it.matches(Regex("[a-z0-9]{1,8}")) }
+        ?: Uri.parse(url).lastPathSegment?.substringAfterLast('.')
+            ?.lowercase(Locale.ROOT)?.takeIf { it.matches(Regex("[a-z0-9]{1,8}")) }
+        ?: "jpg"
+    val filename = "DanbooruDownloader-$id-${System.currentTimeMillis()}.$extension"
     val request = DownloadManager.Request(Uri.parse(url))
-        .setTitle("Post #${post.id}")
+        .setTitle("Post #$id")
         .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
         .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, filename)
         .setMimeType(MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension) ?: "application/octet-stream")

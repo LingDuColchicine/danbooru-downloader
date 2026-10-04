@@ -7,11 +7,25 @@ $taskAssetRoot = Join-Path $taskAndroidRoot 'app\src\main\assets\icons'
 $taskDrawableRoot = Join-Path $taskAndroidRoot 'app\src\main\res\drawable'
 New-Item -ItemType Directory -Path $taskDrawableRoot -Force | Out-Null
 
-foreach ($taskIconName in @('search', 'heart', 'image-down', 'settings', 'x', 'chevron-right')) {
+$taskIconNames = @('search', 'heart', 'heart-filled', 'image-down', 'settings', 'x', 'chevron-right', 'square', 'square-check', 'square-arrow-out-up-right')
+foreach ($taskIconName in $taskIconNames) {
     [xml]$taskSvg = Get-Content -Raw -LiteralPath (Join-Path $taskAssetRoot "$taskIconName.svg")
+    $taskFill = if ($taskSvg.DocumentElement.GetAttribute('fill') -eq 'none') { '@android:color/transparent' } else { $taskSvg.DocumentElement.GetAttribute('fill') }
+    $taskStroke = if ($taskSvg.DocumentElement.GetAttribute('stroke') -eq 'currentColor') { '#FF000000' } else { $taskSvg.DocumentElement.GetAttribute('stroke') }
     $taskPaths = foreach ($taskShape in $taskSvg.DocumentElement.ChildNodes) {
         switch ($taskShape.LocalName) {
             'path' { $taskPathData = $taskShape.GetAttribute('d') }
+            'rect' {
+                $taskNumberFormat = [Globalization.CultureInfo]::InvariantCulture
+                $taskX = [double]::Parse($taskShape.GetAttribute('x'), $taskNumberFormat)
+                $taskY = [double]::Parse($taskShape.GetAttribute('y'), $taskNumberFormat)
+                $taskWidth = [double]::Parse($taskShape.GetAttribute('width'), $taskNumberFormat)
+                $taskHeight = [double]::Parse($taskShape.GetAttribute('height'), $taskNumberFormat)
+                $taskRadius = [double]::Parse($taskShape.GetAttribute('rx'), $taskNumberFormat)
+                $taskRight = $taskX + $taskWidth
+                $taskBottom = $taskY + $taskHeight
+                $taskPathData = "M$($taskX + $taskRadius),$taskY H$($taskRight - $taskRadius) A$taskRadius,$taskRadius 0,0 1 $taskRight,$($taskY + $taskRadius) V$($taskBottom - $taskRadius) A$taskRadius,$taskRadius 0,0 1 $($taskRight - $taskRadius),$taskBottom H$($taskX + $taskRadius) A$taskRadius,$taskRadius 0,0 1 $taskX,$($taskBottom - $taskRadius) V$($taskY + $taskRadius) A$taskRadius,$taskRadius 0,0 1 $($taskX + $taskRadius),$taskY Z"
+            }
             'circle' {
                 $taskNumberFormat = [Globalization.CultureInfo]::InvariantCulture
                 $taskCx = [double]::Parse($taskShape.GetAttribute('cx'), $taskNumberFormat)
@@ -26,7 +40,7 @@ foreach ($taskIconName in @('search', 'heart', 'image-down', 'settings', 'x', 'c
             default { throw "Unsupported SVG element: $($taskShape.LocalName)" }
         }
         $taskPathData = [System.Security.SecurityElement]::Escape($taskPathData)
-        '    <path android:fillColor="@android:color/transparent" android:strokeColor="#FF000000" android:strokeWidth="2" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="' + $taskPathData + '" />'
+        '    <path android:fillColor="' + $taskFill + '" android:strokeColor="' + $taskStroke + '" android:strokeWidth="2" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="' + $taskPathData + '" />'
     }
     $taskVector = @(
         '<?xml version="1.0" encoding="utf-8"?>'
@@ -45,5 +59,5 @@ foreach ($taskIconName in @('search', 'heart', 'image-down', 'settings', 'x', 'c
         [System.IO.File]::WriteAllText($taskOutputPath, "$taskVector`n", [System.Text.UTF8Encoding]::new($false))
     }
 }
-if ($Check) { Write-Output 'PASS: all six native icons match their SVG assets.' }
-else { Write-Output 'Generated six native icons from the desktop SVG assets.' }
+if ($Check) { Write-Output "PASS: all $($taskIconNames.Count) native icons match their SVG assets." }
+else { Write-Output "Generated $($taskIconNames.Count) native icons from the desktop SVG assets." }

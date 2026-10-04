@@ -1,19 +1,36 @@
 package com.lingducolchicine.danboorudownloader
 
+import android.Manifest
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
@@ -45,10 +62,14 @@ import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExpandedFullScreenSearchBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.FabPosition
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -88,12 +109,15 @@ import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -108,10 +132,12 @@ import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import java.text.NumberFormat
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -158,6 +184,26 @@ private enum class Page(@get:StringRes val label: Int, @get:DrawableRes val icon
 
 internal data class SelectedTag(val label: String, val value: String, val category: Int)
 
+private class PostGridControls {
+    var activePostKey by mutableStateOf<String?>(null)
+    var selectionMode by mutableStateOf(false)
+    val selectedPostIds = mutableStateListOf<Long>()
+
+    fun startSelection(id: Long) {
+        selectionMode = true
+        toggleSelection(id)
+    }
+
+    fun toggleSelection(id: Long) {
+        if (id in selectedPostIds) selectedPostIds.remove(id) else selectedPostIds.add(id)
+    }
+
+    fun endSelection() {
+        selectionMode = false
+        selectedPostIds.clear()
+    }
+}
+
 private val selectedTagsSaver = Saver<SnapshotStateList<SelectedTag>, ArrayList<String>>(
     save = { tags ->
         ArrayList(tags.flatMap { listOf(it.label, it.value, it.category.toString()) })
@@ -190,10 +236,16 @@ internal fun DownloaderApp(theme: String, onThemeChange: (String) -> Unit) {
     val selectedTags = rememberSaveable(saver = selectedTagsSaver) { mutableStateListOf<SelectedTag>() }
     var submittedQuery by rememberSaveable { mutableStateOf("") }
     val context = LocalContext.current
+    val resources = LocalResources.current
     val historyStore = remember(context) { SearchHistoryStore(context) }
     val searchHistory = remember(historyStore) {
         mutableStateListOf<SearchHistoryEntry>().apply { addAll(historyStore.load()) }
     }
+    val favoriteStore = remember(context) { FavoriteStore(context) }
+    val favorites = remember(favoriteStore) {
+        mutableStateListOf<FavoritePost>().apply { addAll(favoriteStore.load()) }
+    }
+    val gridControls = remember { PostGridControls() }
     val feedScope = rememberCoroutineScope()
     val latestPosts = remember(feedScope) { LatestPostsFeed(feedScope, submittedQuery) }
     var feedGridState by remember { mutableStateOf(LazyStaggeredGridState()) }
@@ -202,10 +254,49 @@ internal fun DownloaderApp(theme: String, onThemeChange: (String) -> Unit) {
     var detailVisibility by remember { mutableFloatStateOf(if (selectedPostId == null) 0f else 1f) }
     val page = Page.valueOf(selectedPage)
     val focusManager = LocalFocusManager.current
+    var pendingDownloads by remember { mutableStateOf<List<FavoritePost>>(emptyList()) }
+    var downloadInProgress by remember { mutableStateOf(false) }
+    val queueSelectedDownloads: (List<FavoritePost>) -> Unit = { posts ->
+        val available = posts.filter { it.fileUrl != null }
+        if (available.isEmpty()) {
+            downloadInProgress = false
+            Toast.makeText(context, R.string.original_unavailable, Toast.LENGTH_SHORT).show()
+        } else feedScope.launch {
+            val queued = withContext(Dispatchers.IO) {
+                available.count { post ->
+                    runCatching {
+                        enqueueOriginalDownload(context, post.id, requireNotNull(post.fileUrl), post.fileExt)
+                    }.isSuccess
+                }
+            }
+            downloadInProgress = false
+            Toast.makeText(
+                context,
+                if (queued == 0) resources.getString(R.string.download_failed_generic)
+                else resources.getString(R.string.download_selected_result, queued, posts.size),
+                Toast.LENGTH_LONG,
+            ).show()
+            if (queued == posts.size && gridControls.selectedPostIds.toSet() == posts.map { it.id }.toSet()) {
+                gridControls.endSelection()
+            }
+        }
+    }
+    val storagePermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        val posts = pendingDownloads
+        pendingDownloads = emptyList()
+        if (granted) queueSelectedDownloads(posts)
+        else {
+            downloadInProgress = false
+            Toast.makeText(context, R.string.download_permission_denied, Toast.LENGTH_SHORT).show()
+        }
+    }
 
     BackHandler(enabled = displayedPostId == null && page != Page.Search) {
         focusManager.clearFocus()
         selectedPage = Page.Search.name
+    }
+    BackHandler(enabled = displayedPostId == null && gridControls.selectionMode) {
+        gridControls.endSelection()
     }
 
     LaunchedEffect(selectedPostId) {
@@ -223,6 +314,8 @@ internal fun DownloaderApp(theme: String, onThemeChange: (String) -> Unit) {
     }
 
     val submitSearch: (String) -> Unit = { query ->
+        gridControls.endSelection()
+        gridControls.activePostKey = null
         submittedQuery = query
         latestPosts.search(query)
         feedGridState = LazyStaggeredGridState()
@@ -245,11 +338,41 @@ internal fun DownloaderApp(theme: String, onThemeChange: (String) -> Unit) {
             searchHistory = searchHistory,
             latestPosts = latestPosts,
             feedGridState = feedGridState,
+            favorites = favorites,
+            gridControls = gridControls,
+            downloadInProgress = downloadInProgress,
             theme = theme,
             onThemeChange = onThemeChange,
-            onSelectPage = { selectedPage = it.name },
+            onSelectPage = {
+                gridControls.endSelection()
+                selectedPage = it.name
+            },
             onSubmitSearch = submitSearch,
             onOpenPost = { selectedPostId = it },
+            onDownloadSelected = { posts ->
+                if (!downloadInProgress && posts.isNotEmpty()) {
+                    downloadInProgress = true
+                    if (
+                        Build.VERSION.SDK_INT < Build.VERSION_CODES.Q &&
+                        context.checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED
+                    ) {
+                        pendingDownloads = posts
+                        storagePermission.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                    } else queueSelectedDownloads(posts)
+                }
+            },
+            onToggleFavorite = { post ->
+                val existing = favorites.indexOfFirst { it.id == post.id }
+                if (existing >= 0) favorites.removeAt(existing) else favorites.add(0, post)
+                favoriteStore.save(favorites)
+            },
+            onSharePost = { post ->
+                post.fileUrl?.let { url ->
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    clipboard.setPrimaryClip(ClipData.newPlainText("Danbooru original image", url))
+                    Toast.makeText(context, R.string.original_link_copied, Toast.LENGTH_SHORT).show()
+                }
+            },
             onDeleteHistory = { entry ->
                 searchHistory.removeAll { it.tag.value.equals(entry.tag.value, ignoreCase = true) }
                 historyStore.save(searchHistory)
@@ -299,14 +422,26 @@ private fun MainScaffold(
     searchHistory: List<SearchHistoryEntry>,
     latestPosts: LatestPostsFeed,
     feedGridState: LazyStaggeredGridState,
+    favorites: List<FavoritePost>,
+    gridControls: PostGridControls,
+    downloadInProgress: Boolean,
     theme: String,
     onThemeChange: (String) -> Unit,
     onSelectPage: (Page) -> Unit,
     onSubmitSearch: (String) -> Unit,
     onOpenPost: (Long) -> Unit,
+    onDownloadSelected: (List<FavoritePost>) -> Unit,
+    onToggleFavorite: (FavoritePost) -> Unit,
+    onSharePost: (FavoritePost) -> Unit,
     onDeleteHistory: (SearchHistoryEntry) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val selectedPosts = if (gridControls.selectionMode) when (page) {
+        Page.Search -> latestPosts.pages.asSequence().flatMap { it.posts.asSequence() }
+            .filter { it.id in gridControls.selectedPostIds }.map { it.asFavoritePost() }.distinctBy { it.id }.toList()
+        Page.Favorites -> favorites.filter { it.id in gridControls.selectedPostIds }
+        else -> emptyList()
+    } else emptyList()
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
@@ -333,6 +468,20 @@ private fun MainScaffold(
                 }
             }
         },
+        floatingActionButton = {
+            AnimatedVisibility(
+                visible = gridControls.selectionMode && (page == Page.Search || page == Page.Favorites),
+                enter = fadeIn(tween(180)) + slideInVertically(tween(180)) { it / 2 },
+                exit = fadeOut(tween(120)) + slideOutVertically(tween(120)) { it / 2 },
+            ) {
+                SelectionSplitButtons(
+                    onCancel = gridControls::endSelection,
+                    onDownload = { onDownloadSelected(selectedPosts) },
+                    downloadEnabled = !downloadInProgress && selectedPosts.any { it.fileUrl != null },
+                )
+            }
+        },
+        floatingActionButtonPosition = FabPosition.End,
     ) { innerPadding ->
         Box(
             modifier = Modifier.fillMaxSize()
@@ -347,9 +496,22 @@ private fun MainScaffold(
                     searchHistory = searchHistory,
                     feed = latestPosts,
                     gridState = feedGridState,
+                    favorites = favorites,
+                    gridControls = gridControls,
                     onSubmitSearch = onSubmitSearch,
                     onOpenPost = onOpenPost,
+                    onToggleFavorite = onToggleFavorite,
+                    onSharePost = onSharePost,
                     onDeleteHistory = onDeleteHistory,
+                    modifier = Modifier.widthIn(max = 600.dp).fillMaxSize(),
+                )
+            } else if (page == Page.Favorites) {
+                FavoritesPage(
+                    favorites = favorites,
+                    gridControls = gridControls,
+                    onOpenPost = onOpenPost,
+                    onToggleFavorite = onToggleFavorite,
+                    onSharePost = onSharePost,
                     modifier = Modifier.widthIn(max = 600.dp).fillMaxSize(),
                 )
             } else {
@@ -361,11 +523,7 @@ private fun MainScaffold(
                 ) {
                     when (page) {
                         Page.Search -> Unit
-                        Page.Favorites -> EmptyState(
-                            icon = R.drawable.ic_heart,
-                            title = R.string.favorites_empty_title,
-                            body = R.string.favorites_empty_body,
-                        )
+                        Page.Favorites -> Unit
                         Page.Download -> DownloadPage()
                         Page.Settings -> SettingsPage(theme, onThemeChange)
                     }
@@ -383,8 +541,12 @@ private fun SearchPage(
     searchHistory: List<SearchHistoryEntry>,
     feed: LatestPostsFeed,
     gridState: LazyStaggeredGridState,
+    favorites: List<FavoritePost>,
+    gridControls: PostGridControls,
     onSubmitSearch: (String) -> Unit,
     onOpenPost: (Long) -> Unit,
+    onToggleFavorite: (FavoritePost) -> Unit,
+    onSharePost: (FavoritePost) -> Unit,
     onDeleteHistory: (SearchHistoryEntry) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -476,7 +638,10 @@ private fun SearchPage(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        LatestPostsGrid(feed, gridState, onOpenPost, Modifier.weight(1f))
+        LatestPostsGrid(
+            feed, gridState, favorites, gridControls, onOpenPost, onToggleFavorite, onSharePost,
+            Modifier.weight(1f),
+        )
     }
 }
 
@@ -709,7 +874,11 @@ private fun SuggestionMessage(@StringRes message: Int) {
 private fun LatestPostsGrid(
     feed: LatestPostsFeed,
     gridState: LazyStaggeredGridState,
+    favorites: List<FavoritePost>,
+    controls: PostGridControls,
     onOpenPost: (Long) -> Unit,
+    onToggleFavorite: (FavoritePost) -> Unit,
+    onSharePost: (FavoritePost) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val error = feed.error
@@ -723,9 +892,9 @@ private fun LatestPostsGrid(
 
     LazyVerticalStaggeredGrid(
         columns = StaggeredGridCells.Fixed(2),
-        modifier = modifier,
+        modifier = modifier.activatePostOnDrag(gridState, controls),
         state = gridState,
-        contentPadding = PaddingValues(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 16.dp),
+        contentPadding = PaddingValues(start = 16.dp, top = 8.dp, end = 16.dp, bottom = if (controls.selectionMode) 96.dp else 16.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalItemSpacing = 8.dp,
     ) {
@@ -733,9 +902,18 @@ private fun LatestPostsGrid(
             item(key = "page-${page.number}", span = StaggeredGridItemSpan.FullLine) {
                 PageHeader(page.number)
             }
-            page.posts.forEach { post ->
-                item(key = "post-${page.number}-${post.id}") {
-                    LatestPostCard(post, onOpenPost)
+            page.posts.forEachIndexed { index, post ->
+                val itemKey = "post-${page.number}-$index-${post.id}"
+                item(key = itemKey) {
+                    PostGridCard(
+                        post = post.asFavoritePost(),
+                        itemKey = itemKey,
+                        favorite = favorites.any { it.id == post.id },
+                        controls = controls,
+                        onOpenPost = onOpenPost,
+                        onToggleFavorite = onToggleFavorite,
+                        onSharePost = onSharePost,
+                    )
                 }
             }
         }
@@ -774,8 +952,123 @@ private fun LatestPostsGrid(
 }
 
 @Composable
-private fun LatestPostCard(post: LatestPost, onOpenPost: (Long) -> Unit) {
-    Card(onClick = { onOpenPost(post.id) }, modifier = Modifier.fillMaxWidth()) {
+private fun FavoritesPage(
+    favorites: List<FavoritePost>,
+    gridControls: PostGridControls,
+    onOpenPost: (Long) -> Unit,
+    onToggleFavorite: (FavoritePost) -> Unit,
+    onSharePost: (FavoritePost) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    if (favorites.isEmpty()) {
+        Column(modifier) {
+            EmptyState(R.drawable.ic_heart, R.string.favorites_empty_title, R.string.favorites_empty_body)
+        }
+        return
+    }
+    val gridState = remember { LazyStaggeredGridState() }
+    Column(modifier) {
+        LazyVerticalStaggeredGrid(
+            columns = StaggeredGridCells.Fixed(2),
+            state = gridState,
+            modifier = Modifier.weight(1f).activatePostOnDrag(gridState, gridControls),
+            contentPadding = PaddingValues(start = 16.dp, top = 8.dp, end = 16.dp, bottom = if (gridControls.selectionMode) 96.dp else 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalItemSpacing = 8.dp,
+        ) {
+            favorites.forEach { post ->
+                val itemKey = "favorite-${post.id}"
+                item(key = itemKey) {
+                    PostGridCard(
+                        post = post,
+                        itemKey = itemKey,
+                        favorite = true,
+                        controls = gridControls,
+                        onOpenPost = onOpenPost,
+                        onToggleFavorite = onToggleFavorite,
+                        onSharePost = onSharePost,
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun Modifier.activatePostOnDrag(
+    gridState: LazyStaggeredGridState,
+    controls: PostGridControls,
+): Modifier = pointerInput(gridState, controls) {
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+        var dragging = false
+        while (true) {
+            val event = awaitPointerEvent(PointerEventPass.Initial)
+            val pointer = event.changes.firstOrNull { it.id == down.id } ?: break
+            if (!pointer.pressed) break
+            if (!dragging && (pointer.position - down.position).getDistance() > viewConfiguration.touchSlop) {
+                dragging = true
+            }
+            if (dragging) {
+                val point = pointer.position
+                val itemKey = gridState.layoutInfo.visibleItemsInfo.firstOrNull { item ->
+                    point.x >= item.offset.x && point.x < item.offset.x + item.size.width &&
+                        point.y >= item.offset.y && point.y < item.offset.y + item.size.height
+                }?.key as? String
+                if (itemKey?.startsWith("post-") == true || itemKey?.startsWith("favorite-") == true) {
+                    controls.activePostKey = itemKey
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SelectionSplitButtons(
+    onCancel: () -> Unit,
+    onDownload: () -> Unit,
+    downloadEnabled: Boolean,
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        FilledTonalButton(
+            onClick = onCancel,
+            modifier = Modifier.height(48.dp),
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 4.dp, bottomEnd = 4.dp, bottomStart = 24.dp),
+        ) { Text(stringResource(R.string.cancel_selection)) }
+        Button(
+            onClick = onDownload,
+            enabled = downloadEnabled,
+            modifier = Modifier.height(48.dp),
+            shape = RoundedCornerShape(topStart = 4.dp, topEnd = 24.dp, bottomEnd = 24.dp, bottomStart = 4.dp),
+        ) {
+            Icon(painterResource(R.drawable.ic_image_down), contentDescription = null, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(stringResource(R.string.nav_download))
+        }
+    }
+}
+
+@Composable
+private fun PostGridCard(
+    post: FavoritePost,
+    itemKey: String,
+    favorite: Boolean,
+    controls: PostGridControls,
+    onOpenPost: (Long) -> Unit,
+    onToggleFavorite: (FavoritePost) -> Unit,
+    onSharePost: (FavoritePost) -> Unit,
+) {
+    val selected = post.id in controls.selectedPostIds
+    val showActions = controls.activePostKey == itemKey
+    Card(
+        onClick = {
+            controls.activePostKey = itemKey
+            if (controls.selectionMode) controls.toggleSelection(post.id) else onOpenPost(post.id)
+        },
+        modifier = Modifier.fillMaxWidth(),
+    ) {
         Box(
             modifier = Modifier.fillMaxWidth()
                 .aspectRatio(post.aspectRatio)
@@ -794,8 +1087,78 @@ private fun LatestPostCard(post: LatestPost, onOpenPost: (Long) -> Unit) {
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
             )
+            AnimatedPostAction(
+                visible = showActions,
+                modifier = Modifier.align(Alignment.TopStart).padding(4.dp),
+            ) {
+                FilledTonalIconButton(
+                    onClick = { onToggleFavorite(post) },
+                    enabled = showActions,
+                    modifier = Modifier.size(40.dp),
+                ) {
+                    Icon(
+                        painterResource(if (favorite) R.drawable.ic_heart_filled else R.drawable.ic_heart),
+                        contentDescription = stringResource(
+                            if (favorite) R.string.remove_favorite else R.string.add_favorite,
+                        ),
+                        tint = if (favorite) Color(0xFFE43368) else MaterialTheme.colorScheme.onSecondaryContainer,
+                    )
+                }
+            }
+            AnimatedPostAction(
+                visible = showActions,
+                modifier = Modifier.align(Alignment.TopEnd).padding(4.dp),
+            ) {
+                FilledTonalIconButton(
+                    onClick = { onSharePost(post) },
+                    enabled = showActions && post.fileUrl != null,
+                    modifier = Modifier.size(40.dp),
+                ) {
+                    Icon(
+                        painterResource(R.drawable.ic_square_arrow_out_up_right),
+                        contentDescription = stringResource(
+                            if (post.fileUrl == null) R.string.original_unavailable else R.string.copy_original_link,
+                        ),
+                    )
+                }
+            }
+            AnimatedPostAction(
+                visible = showActions || controls.selectionMode,
+                modifier = Modifier.align(Alignment.BottomStart).padding(4.dp),
+            ) {
+                FilledTonalIconButton(
+                    onClick = {
+                        if (controls.selectionMode) controls.toggleSelection(post.id)
+                        else controls.startSelection(post.id)
+                    },
+                    enabled = showActions || controls.selectionMode,
+                    modifier = Modifier.size(40.dp),
+                ) {
+                    Icon(
+                        painterResource(if (selected) R.drawable.ic_square_check else R.drawable.ic_square),
+                        contentDescription = stringResource(
+                            if (selected) R.string.deselect_post else R.string.select_post,
+                            post.id,
+                        ),
+                    )
+                }
+            }
         }
     }
+}
+
+@Composable
+private fun AnimatedPostAction(
+    visible: Boolean,
+    modifier: Modifier,
+    content: @Composable () -> Unit,
+) {
+    AnimatedVisibility(
+        visible = visible,
+        modifier = modifier,
+        enter = fadeIn(tween(180)) + scaleIn(initialScale = 0.85f, animationSpec = tween(180)),
+        exit = fadeOut(tween(120)) + scaleOut(targetScale = 0.85f, animationSpec = tween(120)),
+    ) { content() }
 }
 
 @Composable

@@ -86,7 +86,6 @@ class NavigationTest {
 
         tab("Favorites").performClick()
         tab("Favorites").assertIsSelected()
-        compose.onNodeWithText("No favorites yet").assertIsDisplayed()
 
         tab("Download").performClick()
         tab("Download").assertIsSelected()

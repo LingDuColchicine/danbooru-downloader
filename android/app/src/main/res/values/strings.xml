@@ -46,6 +46,15 @@
     <string name="retry">Retry</string>
     <string name="favorites_empty_title">No favorites yet</string>
     <string name="favorites_empty_body">Your favorite images will appear here.</string>
+    <string name="add_favorite">Add to favorites</string>
+    <string name="remove_favorite">Remove from favorites</string>
+    <string name="copy_original_link">Copy original image link</string>
+    <string name="original_link_copied">Original image link copied</string>
+    <string name="select_post">Select post %1$d</string>
+    <string name="deselect_post">Deselect post %1$d</string>
+    <string name="cancel_selection">Cancel</string>
+    <string name="download_selected_result">Queued %1$d of %2$d selected originals.</string>
+    <string name="download_failed_generic">No downloads could be started.</string>
     <string name="downloads_active">Downloading</string>
     <string name="downloads_empty_active">No active downloads.</string>
     <string name="downloads_history">Download history</string>
@@ -63,5 +72,5 @@
     <string name="settings_about">About</string>
     <string name="settings_version">Version</string>
     <string name="version_value">0.1.0 · Preview</string>
-    <string name="settings_preview_note">Search shows Danbooru posts. Favorites and downloads will be available in a future update.</string>
+    <string name="settings_preview_note">Search shows Danbooru posts. Favorites are saved on this device. Download history will be available in a future update.</string>
 </resources>
