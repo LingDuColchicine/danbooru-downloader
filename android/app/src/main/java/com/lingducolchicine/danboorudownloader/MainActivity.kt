@@ -376,6 +376,16 @@ internal fun DownloaderApp(theme: String, onThemeChange: (String) -> Unit) {
         }
     }
 
+    BackHandler(
+        enabled = displayedPostId == null && page == Page.Search &&
+            !gridControls.selectionMode && (selectedTags.isNotEmpty() || submittedQuery.isNotEmpty()),
+    ) {
+        focusManager.clearFocus()
+        searchTags.setTextAndPlaceCursorAtEnd("")
+        selectedTags.clear()
+        updateResults("")
+    }
+
     Box(Modifier.fillMaxSize()) {
         MainScaffold(
             page = page,
