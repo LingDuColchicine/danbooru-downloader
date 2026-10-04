@@ -7,7 +7,7 @@ $taskAssetRoot = Join-Path $taskAndroidRoot 'app\src\main\assets\icons'
 $taskDrawableRoot = Join-Path $taskAndroidRoot 'app\src\main\res\drawable'
 New-Item -ItemType Directory -Path $taskDrawableRoot -Force | Out-Null
 
-$taskIconNames = @('search', 'heart', 'heart-filled', 'image-down', 'settings', 'x', 'chevron-right', 'square', 'square-check', 'square-arrow-out-up-right')
+$taskIconNames = @('search', 'heart', 'heart-filled', 'image-down', 'settings', 'x', 'chevron-right', 'square', 'square-check', 'square-arrow-out-up-right', 'plus', 'copy-plus', 'rotate-ccw', 'arrow-up-to-line')
 foreach ($taskIconName in $taskIconNames) {
     [xml]$taskSvg = Get-Content -Raw -LiteralPath (Join-Path $taskAssetRoot "$taskIconName.svg")
     $taskFill = if ($taskSvg.DocumentElement.GetAttribute('fill') -eq 'none') { '@android:color/transparent' } else { $taskSvg.DocumentElement.GetAttribute('fill') }
@@ -15,6 +15,7 @@ foreach ($taskIconName in $taskIconNames) {
     $taskPaths = foreach ($taskShape in $taskSvg.DocumentElement.ChildNodes) {
         switch ($taskShape.LocalName) {
             'path' { $taskPathData = $taskShape.GetAttribute('d') }
+            'line' { $taskPathData = "M$($taskShape.GetAttribute('x1')),$($taskShape.GetAttribute('y1')) L$($taskShape.GetAttribute('x2')),$($taskShape.GetAttribute('y2'))" }
             'rect' {
                 $taskNumberFormat = [Globalization.CultureInfo]::InvariantCulture
                 $taskX = [double]::Parse($taskShape.GetAttribute('x'), $taskNumberFormat)

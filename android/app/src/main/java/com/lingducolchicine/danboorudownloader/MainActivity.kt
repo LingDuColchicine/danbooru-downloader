@@ -19,6 +19,7 @@ import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -55,21 +56,26 @@ import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExpandedFullScreenSearchBar
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FabPosition
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -118,8 +124,10 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.semantics
@@ -182,6 +190,23 @@ private enum class Page(@get:StringRes val label: Int, @get:DrawableRes val icon
     Settings(R.string.nav_settings, R.drawable.ic_settings),
 }
 
+private enum class Rating(val code: String, @get:StringRes val label: Int, val bit: Int) {
+    General("g", R.string.rating_general, 1),
+    Sensitive("s", R.string.rating_sensitive, 2),
+    Questionable("q", R.string.rating_questionable, 4),
+    Explicit("e", R.string.rating_explicit, 8),
+}
+
+private const val ALL_RATINGS_MASK = 15
+private const val RATING_MASK_KEY = "rating_mask"
+
+internal fun ratedQuery(tags: String, ratingMask: Int): String {
+    val selected = Rating.entries.filter { ratingMask and it.bit != 0 }.ifEmpty { listOf(Rating.General) }
+    val ratingTerm = if (selected.size == Rating.entries.size) ""
+    else "rating:${selected.joinToString(",") { it.code }}"
+    return listOf(tags.trim(), ratingTerm).filter { it.isNotEmpty() }.joinToString(" ")
+}
+
 internal data class SelectedTag(val label: String, val value: String, val category: Int)
 
 private class PostGridControls {
@@ -189,8 +214,13 @@ private class PostGridControls {
     var selectionMode by mutableStateOf(false)
     val selectedPostIds = mutableStateListOf<Long>()
 
-    fun startSelection(id: Long) {
+    fun startSelection() {
         selectionMode = true
+        activePostKey = null
+    }
+
+    fun startSelection(id: Long) {
+        startSelection()
         toggleSelection(id)
     }
 
@@ -236,6 +266,13 @@ internal fun DownloaderApp(theme: String, onThemeChange: (String) -> Unit) {
     val selectedTags = rememberSaveable(saver = selectedTagsSaver) { mutableStateListOf<SelectedTag>() }
     var submittedQuery by rememberSaveable { mutableStateOf("") }
     val context = LocalContext.current
+    val ratingPreferences = remember(context) { context.getSharedPreferences("search", Context.MODE_PRIVATE) }
+    var ratingMask by rememberSaveable {
+        mutableIntStateOf(
+            ratingPreferences.getInt(RATING_MASK_KEY, Rating.General.bit)
+                .takeIf { it in 1..ALL_RATINGS_MASK } ?: Rating.General.bit
+        )
+    }
     val resources = LocalResources.current
     val historyStore = remember(context) { SearchHistoryStore(context) }
     val searchHistory = remember(historyStore) {
@@ -247,7 +284,7 @@ internal fun DownloaderApp(theme: String, onThemeChange: (String) -> Unit) {
     }
     val gridControls = remember { PostGridControls() }
     val feedScope = rememberCoroutineScope()
-    val latestPosts = remember(feedScope) { LatestPostsFeed(feedScope, submittedQuery) }
+    val latestPosts = remember(feedScope) { LatestPostsFeed(feedScope, ratedQuery(submittedQuery, ratingMask)) }
     var feedGridState by remember { mutableStateOf(LazyStaggeredGridState()) }
     var selectedPostId by rememberSaveable { mutableStateOf<Long?>(null) }
     var displayedPostId by remember { mutableStateOf(selectedPostId) }
@@ -313,12 +350,21 @@ internal fun DownloaderApp(theme: String, onThemeChange: (String) -> Unit) {
         }
     }
 
+    val updateResults: (String) -> Unit = { query ->
+        if (query != submittedQuery) {
+            gridControls.endSelection()
+            gridControls.activePostKey = null
+            submittedQuery = query
+            latestPosts.search(ratedQuery(query, ratingMask))
+            feedGridState = LazyStaggeredGridState()
+        }
+    }
+    LaunchedEffect(selectedTags, ratingMask) {
+        snapshotFlow { selectedTags.joinToString(" ") { it.value } }
+            .collect { updateResults(it) }
+    }
     val submitSearch: (String) -> Unit = { query ->
-        gridControls.endSelection()
-        gridControls.activePostKey = null
-        submittedQuery = query
-        latestPosts.search(query)
-        feedGridState = LazyStaggeredGridState()
+        updateResults(query)
         if (query.isNotBlank()) {
             val searchedTags = selectedTags.asReversed().map(::SearchHistoryEntry)
             searchHistory.removeAll { existing ->
@@ -338,6 +384,8 @@ internal fun DownloaderApp(theme: String, onThemeChange: (String) -> Unit) {
             searchHistory = searchHistory,
             latestPosts = latestPosts,
             feedGridState = feedGridState,
+            submittedQuery = submittedQuery,
+            ratingMask = ratingMask,
             favorites = favorites,
             gridControls = gridControls,
             downloadInProgress = downloadInProgress,
@@ -348,6 +396,17 @@ internal fun DownloaderApp(theme: String, onThemeChange: (String) -> Unit) {
                 selectedPage = it.name
             },
             onSubmitSearch = submitSearch,
+            onRefreshGrid = { feedGridState = LazyStaggeredGridState() },
+            onRatingChange = { selectedMask ->
+                if (selectedMask != 0 && selectedMask != ratingMask) {
+                    ratingMask = selectedMask
+                    ratingPreferences.edit().putInt(RATING_MASK_KEY, selectedMask).apply()
+                    gridControls.endSelection()
+                    gridControls.activePostKey = null
+                    latestPosts.search(ratedQuery(submittedQuery, selectedMask))
+                    feedGridState = LazyStaggeredGridState()
+                }
+            },
             onOpenPost = { selectedPostId = it },
             onDownloadSelected = { posts ->
                 if (!downloadInProgress && posts.isNotEmpty()) {
@@ -422,6 +481,8 @@ private fun MainScaffold(
     searchHistory: List<SearchHistoryEntry>,
     latestPosts: LatestPostsFeed,
     feedGridState: LazyStaggeredGridState,
+    submittedQuery: String,
+    ratingMask: Int,
     favorites: List<FavoritePost>,
     gridControls: PostGridControls,
     downloadInProgress: Boolean,
@@ -429,6 +490,8 @@ private fun MainScaffold(
     onThemeChange: (String) -> Unit,
     onSelectPage: (Page) -> Unit,
     onSubmitSearch: (String) -> Unit,
+    onRefreshGrid: () -> Unit,
+    onRatingChange: (Int) -> Unit,
     onOpenPost: (Long) -> Unit,
     onDownloadSelected: (List<FavoritePost>) -> Unit,
     onToggleFavorite: (FavoritePost) -> Unit,
@@ -436,6 +499,21 @@ private fun MainScaffold(
     onDeleteHistory: (SearchHistoryEntry) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var feedFabExpanded by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(page, gridControls.selectionMode) {
+        if (page != Page.Search || gridControls.selectionMode) feedFabExpanded = false
+    }
+    LaunchedEffect(page, feedGridState) {
+        if (page == Page.Search) {
+            snapshotFlow { feedGridState.isScrollInProgress }
+                .filter { it }
+                .collect { feedFabExpanded = false }
+        }
+    }
+    BackHandler(enabled = page == Page.Search && feedFabExpanded) {
+        feedFabExpanded = false
+    }
     val selectedPosts = if (gridControls.selectionMode) when (page) {
         Page.Search -> latestPosts.pages.asSequence().flatMap { it.posts.asSequence() }
             .filter { it.id in gridControls.selectedPostIds }.map { it.asFavoritePost() }.distinctBy { it.id }.toList()
@@ -469,16 +547,44 @@ private fun MainScaffold(
             }
         },
         floatingActionButton = {
-            AnimatedVisibility(
-                visible = gridControls.selectionMode && (page == Page.Search || page == Page.Favorites),
-                enter = fadeIn(tween(180)) + slideInVertically(tween(180)) { it / 2 },
-                exit = fadeOut(tween(120)) + slideOutVertically(tween(120)) { it / 2 },
-            ) {
-                SelectionSplitButtons(
-                    onCancel = gridControls::endSelection,
-                    onDownload = { onDownloadSelected(selectedPosts) },
-                    downloadEnabled = !downloadInProgress && selectedPosts.any { it.fileUrl != null },
-                )
+            Box(contentAlignment = Alignment.BottomEnd) {
+                AnimatedVisibility(
+                    visible = gridControls.selectionMode && (page == Page.Search || page == Page.Favorites),
+                    enter = fadeIn(tween(180)) + slideInVertically(tween(180)) { it / 2 },
+                    exit = fadeOut(tween(120)) + slideOutVertically(tween(120)) { it / 2 },
+                ) {
+                    SelectionSplitButtons(
+                        onCancel = gridControls::endSelection,
+                        onDownload = { onDownloadSelected(selectedPosts) },
+                        downloadEnabled = !downloadInProgress && selectedPosts.any { it.fileUrl != null },
+                    )
+                }
+                AnimatedVisibility(
+                    visible = page == Page.Search && !gridControls.selectionMode,
+                    enter = fadeIn(tween(180)),
+                    exit = fadeOut(tween(120)),
+                ) {
+                    FeedActionsFab(
+                        expanded = feedFabExpanded,
+                        onToggle = { feedFabExpanded = !feedFabExpanded },
+                        onMultiSelect = {
+                            feedFabExpanded = false
+                            gridControls.startSelection()
+                        },
+                        onRefresh = {
+                            feedFabExpanded = false
+                            gridControls.activePostKey = null
+                            latestPosts.search(latestPosts.query)
+                            onRefreshGrid()
+                        },
+                        onBackToTop = {
+                            feedFabExpanded = false
+                            if (latestPosts.pages.isNotEmpty()) {
+                                scope.launch { feedGridState.animateScrollToItem(0) }
+                            }
+                        },
+                    )
+                }
             }
         },
         floatingActionButtonPosition = FabPosition.End,
@@ -496,9 +602,15 @@ private fun MainScaffold(
                     searchHistory = searchHistory,
                     feed = latestPosts,
                     gridState = feedGridState,
+                    submittedQuery = submittedQuery,
+                    ratingMask = ratingMask,
                     favorites = favorites,
                     gridControls = gridControls,
                     onSubmitSearch = onSubmitSearch,
+                    onRatingChange = {
+                        feedFabExpanded = false
+                        onRatingChange(it)
+                    },
                     onOpenPost = onOpenPost,
                     onToggleFavorite = onToggleFavorite,
                     onSharePost = onSharePost,
@@ -541,9 +653,12 @@ private fun SearchPage(
     searchHistory: List<SearchHistoryEntry>,
     feed: LatestPostsFeed,
     gridState: LazyStaggeredGridState,
+    submittedQuery: String,
+    ratingMask: Int,
     favorites: List<FavoritePost>,
     gridControls: PostGridControls,
     onSubmitSearch: (String) -> Unit,
+    onRatingChange: (Int) -> Unit,
     onOpenPost: (Long) -> Unit,
     onToggleFavorite: (FavoritePost) -> Unit,
     onSharePost: (FavoritePost) -> Unit,
@@ -606,11 +721,13 @@ private fun SearchPage(
                             Icon(painterResource(R.drawable.ic_search), contentDescription = null)
                         }
                     },
-                    trailingIcon = {
-                        IconButton(onClick = submitSearch) {
-                            Icon(painterResource(R.drawable.ic_search), stringResource(R.string.search_posts))
+                    trailingIcon = if (searchBarState.currentValue == SearchBarValue.Expanded) {
+                        {
+                            IconButton(onClick = submitSearch) {
+                                Icon(painterResource(R.drawable.ic_search), stringResource(R.string.search_posts))
+                            }
                         }
-                    },
+                    } else null,
                 )
             }
             SearchBar(state = searchBarState, inputField = inputField, modifier = Modifier.fillMaxWidth())
@@ -631,16 +748,10 @@ private fun SearchPage(
                 }
             }
         }
-        Text(
-            if (feed.query.isEmpty()) stringResource(R.string.search_latest_note)
-            else stringResource(R.string.search_results_for, feed.query),
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
         LatestPostsGrid(
-            feed, gridState, favorites, gridControls, onOpenPost, onToggleFavorite, onSharePost,
-            Modifier.weight(1f),
+            feed, gridState, submittedQuery, ratingMask, favorites, gridControls,
+            onRatingChange, onOpenPost, onToggleFavorite, onSharePost,
+            Modifier.weight(1f).testTag("feed-tags:$submittedQuery"),
         )
     }
 }
@@ -871,33 +982,99 @@ private fun SuggestionMessage(@StringRes message: Int) {
 }
 
 @Composable
+private fun RatingFilter(ratingMask: Int, onRatingChange: (Int) -> Unit) {
+    var dialogOpen by remember { mutableStateOf(false) }
+    val count = Rating.entries.count { ratingMask and it.bit != 0 }
+    val summary = when (count) {
+        0 -> stringResource(R.string.rating_general)
+        Rating.entries.size -> stringResource(R.string.rating_all)
+        1 -> stringResource(Rating.entries.first { ratingMask and it.bit != 0 }.label)
+        else -> stringResource(R.string.rating_count, count)
+    }
+    val selectedDescription = stringResource(R.string.rating_selected, summary)
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text(stringResource(R.string.rating), style = MaterialTheme.typography.labelLarge)
+        FilterChip(
+            selected = ratingMask != 0 && ratingMask != ALL_RATINGS_MASK,
+            onClick = { dialogOpen = true },
+            label = { Text(summary) },
+            modifier = Modifier.semantics { contentDescription = selectedDescription },
+        )
+    }
+    if (dialogOpen) {
+        var draftMask by remember(ratingMask) { mutableIntStateOf(ratingMask) }
+        AlertDialog(
+            onDismissRequest = { dialogOpen = false },
+            title = { Text(stringResource(R.string.rating)) },
+            text = {
+                Column {
+                    Text(
+                        stringResource(R.string.rating_dialog_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Rating.entries.forEach { option ->
+                        val checked = draftMask and option.bit != 0
+                        Row(
+                            modifier = Modifier.fillMaxWidth()
+                                .toggleable(value = checked, role = Role.Checkbox) { selected ->
+                                    draftMask = if (selected) draftMask or option.bit else draftMask and option.bit.inv()
+                                }
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Checkbox(checked = checked, onCheckedChange = null)
+                            Spacer(Modifier.width(8.dp))
+                            Text(stringResource(option.label))
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(enabled = draftMask != 0, onClick = {
+                    dialogOpen = false
+                    onRatingChange(draftMask)
+                }) { Text(stringResource(R.string.rating_apply)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { dialogOpen = false }) {
+                    Text(stringResource(R.string.cancel_selection))
+                }
+            },
+        )
+    }
+}
+
+@Composable
 private fun LatestPostsGrid(
     feed: LatestPostsFeed,
     gridState: LazyStaggeredGridState,
+    submittedQuery: String,
+    ratingMask: Int,
     favorites: List<FavoritePost>,
     controls: PostGridControls,
+    onRatingChange: (Int) -> Unit,
     onOpenPost: (Long) -> Unit,
     onToggleFavorite: (FavoritePost) -> Unit,
     onSharePost: (FavoritePost) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val error = feed.error
-    if (feed.pages.isEmpty() && feed.hasMore && error == null) {
-        LaunchedEffect(feed) { feed.loadNextPage() }
-        Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator()
-        }
-        return
-    }
-
     LazyVerticalStaggeredGrid(
         columns = StaggeredGridCells.Fixed(2),
         modifier = modifier.activatePostOnDrag(gridState, controls),
         state = gridState,
-        contentPadding = PaddingValues(start = 16.dp, top = 8.dp, end = 16.dp, bottom = if (controls.selectionMode) 96.dp else 16.dp),
+        contentPadding = PaddingValues(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 96.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalItemSpacing = 8.dp,
     ) {
+        item(key = "rating-filter", span = StaggeredGridItemSpan.FullLine) {
+            RatingFilter(ratingMask, onRatingChange)
+        }
         feed.pages.forEach { page ->
             item(key = "page-${page.number}", span = StaggeredGridItemSpan.FullLine) {
                 PageHeader(page.number)
@@ -929,6 +1106,13 @@ private fun LatestPostsGrid(
                     }
                 }
             }
+        } else if (feed.pages.isEmpty() && feed.hasMore) {
+            item(key = "initial-loading", span = StaggeredGridItemSpan.FullLine) {
+                LaunchedEffect(feed) { feed.loadNextPage() }
+                Box(Modifier.fillMaxWidth().height(220.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+            }
         } else if (feed.hasMore) {
             item(key = "loading-${feed.nextPage}", span = StaggeredGridItemSpan.FullLine) {
                 LaunchedEffect(feed.nextPage) { feed.loadNextPage() }
@@ -942,7 +1126,7 @@ private fun LatestPostsGrid(
         } else if (feed.pages.isEmpty()) {
             item(key = "empty", span = StaggeredGridItemSpan.FullLine) {
                 Text(
-                    stringResource(if (feed.query.isEmpty()) R.string.latest_empty else R.string.search_empty),
+                    stringResource(if (submittedQuery.isEmpty()) R.string.latest_empty else R.string.search_empty),
                     modifier = Modifier.fillMaxWidth().padding(24.dp),
                     textAlign = TextAlign.Center,
                 )
@@ -1018,6 +1202,52 @@ private fun Modifier.activatePostOnDrag(
                     controls.activePostKey = itemKey
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun FeedActionsFab(
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    onMultiSelect: () -> Unit,
+    onRefresh: () -> Unit,
+    onBackToTop: () -> Unit,
+) {
+    val rotation by animateFloatAsState(
+        targetValue = if (expanded) 45f else 0f,
+        animationSpec = tween(180),
+        label = "Feed actions icon",
+    )
+    Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        AnimatedVisibility(
+            visible = expanded,
+            enter = fadeIn(tween(180)) + slideInVertically(tween(180)) { it / 3 },
+            exit = fadeOut(tween(120)) + slideOutVertically(tween(120)) { it / 3 },
+        ) {
+            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(
+                    Triple(R.string.multi_select, R.drawable.ic_copy_plus, onMultiSelect),
+                    Triple(R.string.refresh_posts, R.drawable.ic_rotate_ccw, onRefresh),
+                    Triple(R.string.back_to_top, R.drawable.ic_arrow_up_to_line, onBackToTop),
+                ).forEach { (label, icon, action) ->
+                    ExtendedFloatingActionButton(
+                        text = { Text(stringResource(label), maxLines = 1) },
+                        icon = { Icon(painterResource(icon), contentDescription = null) },
+                        onClick = action,
+                        shape = CircleShape,
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                    )
+                }
+            }
+        }
+        FloatingActionButton(onClick = onToggle, shape = CircleShape) {
+            Icon(
+                painterResource(R.drawable.ic_plus),
+                contentDescription = stringResource(if (expanded) R.string.close_feed_actions else R.string.open_feed_actions),
+                modifier = Modifier.rotate(rotation),
+            )
         }
     }
 }

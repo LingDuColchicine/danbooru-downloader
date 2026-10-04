@@ -10,11 +10,15 @@ import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.state.ToggleableState
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -26,12 +30,79 @@ class NavigationTest {
     val compose = createAndroidComposeRule<MainActivity>()
 
     @Test
+    fun ratingFilterPersistsAndCancelDiscardsDraft() {
+        val preferences = compose.activity.getSharedPreferences("search", android.content.Context.MODE_PRIVATE)
+        val wasSaved = preferences.contains("rating_mask")
+        val previousMask = preferences.getInt("rating_mask", 1)
+        try {
+            val initialDescription = ratingChip().fetchSemanticsNode().config[SemanticsProperties.ContentDescription]
+            ratingChip().performClick()
+            ratingOption("General").performClick()
+            compose.onNodeWithText("Cancel").performClick()
+            assertEquals(initialDescription, ratingChip().fetchSemanticsNode().config[SemanticsProperties.ContentDescription])
+
+            ratingChip().performClick()
+            listOf("General", "Sensitive", "Questionable", "Explicit").forEach { label ->
+                if (ratingOption(label).fetchSemanticsNode().config[SemanticsProperties.ToggleableState] != ToggleableState.On) {
+                    ratingOption(label).performClick()
+                }
+            }
+            compose.onNodeWithText("Apply").performClick()
+            compose.onNode(hasContentDescription("Rating: All ratings")).assertIsDisplayed()
+            assertEquals(15, preferences.getInt("rating_mask", -1))
+            compose.activityRule.scenario.recreate()
+            compose.onNode(hasContentDescription("Rating: All ratings")).assertIsDisplayed()
+            compose.onNodeWithText("Showing the latest posts.").assertDoesNotExist()
+        } finally {
+            val editor = preferences.edit()
+            if (wasSaved) editor.putInt("rating_mask", previousMask) else editor.remove("rating_mask")
+            editor.commit()
+        }
+    }
+
+    @Test
+    fun feedFabActionsAreOrderedAndSelectionCanBeCancelled() {
+        compose.onNode(hasContentDescription("Open feed actions")).performClick()
+        compose.onNodeWithText("Multi-select").assertIsDisplayed()
+        compose.onNodeWithText("Refresh").assertIsDisplayed()
+        compose.onNodeWithText("Back to top").assertIsDisplayed()
+        assertTrue(menuTop("Multi-select") < menuTop("Refresh"))
+        assertTrue(menuTop("Refresh") < menuTop("Back to top"))
+
+        compose.onNodeWithText("Refresh").performClick()
+        compose.onNodeWithText("Multi-select").assertDoesNotExist()
+        compose.onNode(hasContentDescription("Open feed actions")).performClick()
+        compose.onNodeWithText("Back to top").performClick()
+        compose.onNode(hasContentDescription("Open feed actions")).performClick()
+        compose.onNodeWithText("Multi-select").performClick()
+        compose.onNodeWithText("Cancel").assertIsDisplayed().performClick()
+        compose.onNode(hasContentDescription("Open feed actions")).assertIsDisplayed()
+    }
+
+    @Test
+    fun changingSelectedTagsRefreshesResultsWithoutSubmitting() {
+        compose.onNodeWithTag("feed-tags:").assertExists()
+        collapsedSearchInput().performClick()
+        expandedSearchInput().performTextInput("first_tag,second_tag,")
+        expandedChip("first_tag").assertIsDisplayed()
+        expandedChip("second_tag").assertIsDisplayed()
+        expandedIcon("Close search").performClick()
+        compose.onNodeWithTag("feed-tags:first_tag second_tag").assertExists()
+
+        collapsedChip("first_tag").performClick()
+        compose.onNodeWithTag("feed-tags:second_tag").assertExists()
+        collapsedChip("second_tag").performClick()
+        compose.onNodeWithTag("feed-tags:").assertExists()
+    }
+
+    @Test
     fun tabsSwitchAndSearchSurvivesActivityRecreation() {
-        compose.onNodeWithText("Showing the latest posts.").assertIsDisplayed()
+        compose.onNodeWithText("Showing the latest posts.").assertDoesNotExist()
         compose.onNode(hasContentDescription("Search posts") and !hasAnyAncestor(isDialog()))
-            .assertIsDisplayed()
+            .assertDoesNotExist()
         collapsedSearchInput().performClick()
         expandedSearchInput().assertIsFocused()
+        expandedIcon("Search posts").assertIsDisplayed()
         compose.onNodeWithText("Suggested tags").assertDoesNotExist()
         compose.onNodeWithText("Type at least 2 characters for tag suggestions.").assertDoesNotExist()
         expandedSearchInput().performTextInput("a ")
@@ -44,7 +115,7 @@ class NavigationTest {
         expandedSearchInput().performImeAction()
         collapsedChip("b").assertExists()
         collapsedChip("c").assertExists()
-        compose.onNodeWithText("Results for: b c").assertIsDisplayed()
+        compose.onNodeWithText("Results for: b c").assertDoesNotExist()
         historyEntry("b").assertDoesNotExist()
         historyEntry("c").assertDoesNotExist()
 
@@ -58,7 +129,7 @@ class NavigationTest {
         historyEntry("c").assertDoesNotExist()
         expandedIcon("Search posts").performClick()
         collapsedChip("d").assertIsDisplayed()
-        compose.onNodeWithText("Results for: b c d").assertIsDisplayed()
+        compose.onNodeWithText("Results for: b c d").assertDoesNotExist()
         historyEntry("d").assertDoesNotExist()
 
         collapsedSearchInput().performClick()
@@ -75,7 +146,7 @@ class NavigationTest {
         collapsedChip("d").assertExists()
         collapsedChip("b").assertDoesNotExist()
         collapsedChip("c").assertDoesNotExist()
-        compose.onNodeWithText("Results for: d").assertIsDisplayed()
+        compose.onNodeWithText("Results for: d").assertDoesNotExist()
         historyEntry("d").assertDoesNotExist()
 
         collapsedSearchInput().performClick()
@@ -140,4 +211,12 @@ class NavigationTest {
         compose.onNode(hasContentDescription("Remove history: $query") and hasClickAction() and hasAnyAncestor(isDialog()))
 
     private fun historyTop(query: String) = historyEntry(query).fetchSemanticsNode().boundsInRoot.top
+
+    private fun menuTop(label: String) = compose.onNodeWithText(label).fetchSemanticsNode().boundsInRoot.top
+
+    private fun ratingOption(label: String) =
+        compose.onNode(hasText(label) and hasAnyAncestor(isDialog()) and hasClickAction())
+
+    private fun ratingChip() =
+        compose.onNode(hasContentDescription("Rating:", substring = true) and hasClickAction() and !hasAnyAncestor(isDialog()))
 }
