@@ -92,6 +92,7 @@ import androidx.compose.material3.SearchBarValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
@@ -533,9 +534,10 @@ private fun MainScaffold(
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
-            TopAppBar(title = {
-                Text(stringResource(page.label), fontWeight = FontWeight.Bold)
-            })
+            TopAppBar(
+                title = { Text(stringResource(page.label), fontWeight = FontWeight.Bold) },
+                expandedHeight = if (page == Page.Search) 52.dp else TopAppBarDefaults.TopAppBarExpandedHeight,
+            )
         },
         bottomBar = {
             NavigationBar {
@@ -696,13 +698,14 @@ private fun SearchPage(
             }
     }
     Column(modifier) {
-        BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+        BoxWithConstraints(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 12.dp)) {
             val tagStripMaxWidth = if (maxWidth >= 320.dp) 132.dp else 112.dp
             val inputField = @Composable {
                 SearchBarDefaults.InputField(
                     textFieldState = tags,
                     searchBarState = searchBarState,
-                    modifier = Modifier.fillMaxWidth(),
+                    // Keep the 48.dp chip touch target centered within the same 60.dp bar.
+                    modifier = Modifier.fillMaxWidth().height(60.dp),
                     onSearch = { submitSearch() },
                     placeholder = {
                         Text(
@@ -1003,7 +1006,7 @@ private fun RatingFilter(ratingMask: Int, onRatingChange: (Int) -> Unit) {
     }
     val selectedDescription = stringResource(R.string.rating_selected, summary)
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -1078,7 +1081,7 @@ private fun LatestPostsGrid(
         columns = StaggeredGridCells.Fixed(2),
         modifier = modifier.activatePostOnDrag(gridState, controls),
         state = gridState,
-        contentPadding = PaddingValues(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 96.dp),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 96.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalItemSpacing = 8.dp,
     ) {
@@ -1404,7 +1407,7 @@ private fun AnimatedPostAction(
 @Composable
 private fun PageHeader(page: Int) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
