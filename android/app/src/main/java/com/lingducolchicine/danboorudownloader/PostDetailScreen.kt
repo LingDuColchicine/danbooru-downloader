@@ -79,6 +79,7 @@ internal fun PostDetailScreen(
     initialDetail: PostDetail?,
     onBack: () -> Unit,
     onTagClick: (SelectedTag) -> Unit,
+    onDownloadQueued: (PostDetail, Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var detail by remember(postId) { mutableStateOf(initialDetail) }
@@ -101,7 +102,8 @@ internal fun PostDetailScreen(
 
     val startDownload: (PostDetail) -> Unit = { post ->
         try {
-            enqueueOriginalDownload(context, post)
+            val downloadId = enqueueOriginalDownload(context, post)
+            onDownloadQueued(post, downloadId)
             Toast.makeText(context, R.string.download_started, Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
             Toast.makeText(
@@ -306,18 +308,17 @@ private fun DetailTagSection(
     }
 }
 
-private fun formatFileSize(bytes: Long): String = when {
+internal fun formatFileSize(bytes: Long): String = when {
     bytes <= 0L -> "—"
     bytes >= 1024 * 1024 -> String.format(Locale.US, "%.2f MB", bytes / 1024.0 / 1024.0)
     bytes >= 1024 -> String.format(Locale.US, "%.1f KB", bytes / 1024.0)
     else -> "$bytes B"
 }
 
-internal fun enqueueOriginalDownload(context: Context, post: PostDetail) {
+internal fun enqueueOriginalDownload(context: Context, post: PostDetail): Long =
     enqueueOriginalDownload(context, post.id, requireNotNull(post.fileUrl), post.fileExt)
-}
 
-internal fun enqueueOriginalDownload(context: Context, id: Long, url: String, fileExt: String) {
+internal fun enqueueOriginalDownload(context: Context, id: Long, url: String, fileExt: String): Long {
     val extension = fileExt.lowercase(Locale.ROOT).takeIf { it.matches(Regex("[a-z0-9]{1,8}")) }
         ?: Uri.parse(url).lastPathSegment?.substringAfterLast('.')
             ?.lowercase(Locale.ROOT)?.takeIf { it.matches(Regex("[a-z0-9]{1,8}")) }
@@ -329,5 +330,5 @@ internal fun enqueueOriginalDownload(context: Context, id: Long, url: String, fi
         .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, filename)
         .setMimeType(MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension) ?: "application/octet-stream")
     val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-    manager.enqueue(request)
+    return manager.enqueue(request)
 }

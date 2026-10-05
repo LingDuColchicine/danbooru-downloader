@@ -1,6 +1,7 @@
 package com.lingducolchicine.danboorudownloader
 
 import android.Manifest
+import android.app.DownloadManager
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -52,6 +53,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
@@ -82,6 +85,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.InputChip
 import androidx.compose.material3.InputChipDefaults
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -115,6 +119,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
@@ -283,6 +288,47 @@ internal fun DownloaderApp(theme: String, onThemeChange: (String) -> Unit) {
     val favorites = remember(favoriteStore) {
         mutableStateListOf<FavoritePost>().apply { addAll(favoriteStore.load()) }
     }
+    val downloadStore = remember(context) { DownloadStore(context) }
+    val downloadRecords = remember(downloadStore) {
+        mutableStateListOf<DownloadRecord>().apply { addAll(downloadStore.load()) }
+    }
+    val registerDownload: (Long, String, Long) -> Unit = { postId, imageUrl, downloadId ->
+        downloadRecords.add(0, DownloadRecord(downloadId, postId, imageUrl))
+        downloadStore.save(downloadRecords)
+    }
+    LaunchedEffect(downloadStore) {
+        while (true) {
+            val active = downloadRecords.filter {
+                it.status != DownloadManager.STATUS_SUCCESSFUL && it.status != DownloadManager.STATUS_FAILED
+            }
+            if (active.isNotEmpty()) {
+                val updates = withContext(Dispatchers.IO) {
+                    active.map { record ->
+                        runCatching { readDownloadRecord(context, record) ?: record.copy(status = DownloadManager.STATUS_FAILED) }
+                            .getOrDefault(record)
+                    }
+                }
+                var finished = false
+                updates.forEach { updated ->
+                    val index = downloadRecords.indexOfFirst { it.downloadId == updated.downloadId }
+                    if (index >= 0 && downloadRecords[index] != updated) {
+                        downloadRecords[index] = updated
+                        if (updated.status == DownloadManager.STATUS_SUCCESSFUL || updated.status == DownloadManager.STATUS_FAILED) {
+                            finished = true
+                        }
+                    }
+                }
+                if (finished) {
+                    val completedPostIds = mutableSetOf<Long>()
+                    downloadRecords.removeAll {
+                        it.status == DownloadManager.STATUS_SUCCESSFUL && !completedPostIds.add(it.postId)
+                    }
+                    downloadStore.save(downloadRecords)
+                }
+            }
+            delay(1000)
+        }
+    }
     val gridControls = remember { PostGridControls() }
     val feedScope = rememberCoroutineScope()
     val latestPosts = remember(feedScope) { LatestPostsFeed(feedScope, ratedQuery(submittedQuery, ratingMask)) }
@@ -301,20 +347,21 @@ internal fun DownloaderApp(theme: String, onThemeChange: (String) -> Unit) {
             Toast.makeText(context, R.string.original_unavailable, Toast.LENGTH_SHORT).show()
         } else feedScope.launch {
             val queued = withContext(Dispatchers.IO) {
-                available.count { post ->
+                available.mapNotNull { post ->
                     runCatching {
-                        enqueueOriginalDownload(context, post.id, requireNotNull(post.fileUrl), post.fileExt)
-                    }.isSuccess
+                        post to enqueueOriginalDownload(context, post.id, requireNotNull(post.fileUrl), post.fileExt)
+                    }.getOrNull()
                 }
             }
+            queued.forEach { (post, downloadId) -> registerDownload(post.id, post.imageUrl, downloadId) }
             downloadInProgress = false
             Toast.makeText(
                 context,
-                if (queued == 0) resources.getString(R.string.download_failed_generic)
-                else resources.getString(R.string.download_selected_result, queued, posts.size),
+                if (queued.isEmpty()) resources.getString(R.string.download_failed_generic)
+                else resources.getString(R.string.download_selected_result, queued.size, posts.size),
                 Toast.LENGTH_LONG,
             ).show()
-            if (queued == posts.size && gridControls.selectedPostIds.toSet() == posts.map { it.id }.toSet()) {
+            if (queued.size == posts.size && gridControls.selectedPostIds.toSet() == posts.map { it.id }.toSet()) {
                 gridControls.endSelection()
             }
         }
@@ -398,6 +445,7 @@ internal fun DownloaderApp(theme: String, onThemeChange: (String) -> Unit) {
             submittedQuery = submittedQuery,
             ratingMask = ratingMask,
             favorites = favorites,
+            downloadRecords = downloadRecords,
             gridControls = gridControls,
             downloadInProgress = downloadInProgress,
             theme = theme,
@@ -419,6 +467,10 @@ internal fun DownloaderApp(theme: String, onThemeChange: (String) -> Unit) {
                 }
             },
             onOpenPost = { selectedPostId = it },
+            onDeleteDownload = { record ->
+                downloadRecords.removeAll { it.downloadId == record.downloadId }
+                downloadStore.save(downloadRecords)
+            },
             onDownloadSelected = { posts ->
                 if (!downloadInProgress && posts.isNotEmpty()) {
                     downloadInProgress = true
@@ -464,6 +516,9 @@ internal fun DownloaderApp(theme: String, onThemeChange: (String) -> Unit) {
                 postId = displayedPostId!!,
                 initialDetail = initialDetail,
                 onBack = { selectedPostId = null },
+                onDownloadQueued = { post, downloadId ->
+                    registerDownload(post.id, post.previewUrl ?: "", downloadId)
+                },
                 onTagClick = { tag ->
                     addSelectedTag(selectedTags, tag)
                     searchTags.setTextAndPlaceCursorAtEnd("")
@@ -495,6 +550,7 @@ private fun MainScaffold(
     submittedQuery: String,
     ratingMask: Int,
     favorites: List<FavoritePost>,
+    downloadRecords: List<DownloadRecord>,
     gridControls: PostGridControls,
     downloadInProgress: Boolean,
     theme: String,
@@ -504,6 +560,7 @@ private fun MainScaffold(
     onRefreshGrid: () -> Unit,
     onRatingChange: (Int) -> Unit,
     onOpenPost: (Long) -> Unit,
+    onDeleteDownload: (DownloadRecord) -> Unit,
     onDownloadSelected: (List<FavoritePost>) -> Unit,
     onToggleFavorite: (FavoritePost) -> Unit,
     onSharePost: (FavoritePost) -> Unit,
@@ -638,6 +695,13 @@ private fun MainScaffold(
                     onSharePost = onSharePost,
                     modifier = Modifier.widthIn(max = 600.dp).fillMaxSize(),
                 )
+            } else if (page == Page.Download) {
+                DownloadPage(
+                    records = downloadRecords,
+                    onOpenPost = onOpenPost,
+                    onDelete = onDeleteDownload,
+                    modifier = Modifier.widthIn(max = 600.dp).fillMaxSize(),
+                )
             } else {
                 Column(
                     modifier = Modifier.widthIn(max = 600.dp).fillMaxSize()
@@ -648,7 +712,7 @@ private fun MainScaffold(
                     when (page) {
                         Page.Search -> Unit
                         Page.Favorites -> Unit
-                        Page.Download -> DownloadPage()
+                        Page.Download -> Unit
                         Page.Settings -> SettingsPage(theme, onThemeChange)
                     }
                 }
@@ -1421,19 +1485,110 @@ private fun PageHeader(page: Int) {
 }
 
 @Composable
-private fun DownloadPage() {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(stringResource(R.string.downloads_active), style = MaterialTheme.typography.titleMedium)
+private fun DownloadPage(
+    records: List<DownloadRecord>,
+    onOpenPost: (Long) -> Unit,
+    onDelete: (DownloadRecord) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val active = records.filter { it.status != DownloadManager.STATUS_SUCCESSFUL }
+    val history = records.filter { it.status == DownloadManager.STATUS_SUCCESSFUL }
+    LazyColumn(modifier = modifier, contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)) {
+        if (active.isNotEmpty()) {
+            item {
+                Text(
+                    stringResource(R.string.downloads_active),
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 12.dp),
+                )
+            }
+            items(active, key = { it.downloadId }) { record ->
+                DownloadRow(record, onOpenPost, onDelete)
+            }
+        }
+        item {
             Text(
-                stringResource(R.string.downloads_empty_active),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                stringResource(R.string.downloads_history),
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 12.dp),
             )
         }
+        if (history.isEmpty()) {
+            item {
+                Text(
+                    stringResource(R.string.downloads_empty_body),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+                )
+            }
+        } else {
+            items(history, key = { it.downloadId }) { record ->
+                DownloadRow(record, onOpenPost, onDelete)
+            }
+        }
     }
-    Text(stringResource(R.string.downloads_history), style = MaterialTheme.typography.titleMedium)
-    EmptyState(R.drawable.ic_image_down, R.string.downloads_empty_title, R.string.downloads_empty_body)
+}
+
+@Composable
+private fun DownloadRow(
+    record: DownloadRecord,
+    onOpenPost: (Long) -> Unit,
+    onDelete: (DownloadRecord) -> Unit,
+) {
+    val status = when (record.status) {
+        DownloadManager.STATUS_SUCCESSFUL -> stringResource(R.string.download_status_complete)
+        DownloadManager.STATUS_FAILED -> stringResource(R.string.download_status_failed)
+        DownloadManager.STATUS_PAUSED -> stringResource(R.string.download_status_paused)
+        DownloadManager.STATUS_RUNNING -> stringResource(R.string.download_status_downloading)
+        else -> stringResource(R.string.download_status_queued)
+    }
+    val inProgress = record.status != DownloadManager.STATUS_SUCCESSFUL && record.status != DownloadManager.STATUS_FAILED
+    val percentage = if (record.totalBytes > 0) {
+        (record.downloadedBytes.toFloat() / record.totalBytes).coerceIn(0f, 1f)
+    } else null
+    ListItem(
+        headlineContent = { Text("#${record.postId}", fontWeight = FontWeight.Medium) },
+        supportingContent = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    if (inProgress && percentage != null) {
+                        "$status · ${(percentage * 100).toInt()}% · ${formatFileSize(record.downloadedBytes)} / ${formatFileSize(record.totalBytes)}"
+                    } else if (record.status == DownloadManager.STATUS_SUCCESSFUL && record.totalBytes > 0) {
+                        "$status · ${formatFileSize(record.totalBytes)}"
+                    } else status,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (inProgress) {
+                    if (percentage != null) LinearProgressIndicator(progress = { percentage }, modifier = Modifier.fillMaxWidth())
+                    else LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
+            }
+        },
+        leadingContent = {
+            AsyncImage(
+                model = record.imageUrl,
+                contentDescription = null,
+                error = painterResource(R.drawable.ic_image_down),
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.size(44.dp).clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+            )
+        },
+        trailingContent = {
+            if (!inProgress) {
+                IconButton(onClick = { onDelete(record) }) {
+                    Icon(
+                        painterResource(R.drawable.ic_x),
+                        contentDescription = stringResource(R.string.remove_download_record, record.postId),
+                    )
+                }
+            }
+        },
+        modifier = Modifier.fillMaxWidth().clickable { onOpenPost(record.postId) },
+    )
+    HorizontalDivider()
 }
 
 @Composable
