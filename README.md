@@ -9,7 +9,7 @@ The application uses the [official Danbooru API](https://danbooru.donmai.us/wiki
 - Browse recent uploads or search by one or more tags.
 - Tag autocomplete, rating filters, infinite scrolling, and image detail panels.
 - Download original images to a configurable local directory.
-- View active download progress and download history.
+- View active download progress and import/export download history as JSON for the Android app.
 - Local favorites, multi-select downloads, blacklist rules, and import/export of favorites.
 - Optional Danbooru account login with a username and API key.
 - Light, dark, and system themes; English and Chinese interfaces.

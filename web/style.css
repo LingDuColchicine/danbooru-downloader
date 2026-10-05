@@ -686,6 +686,19 @@ button {
   width: 17px;
 }
 
+.download-history-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.download-history-actions .download-settings-status {
+  flex-basis: 100%;
+  text-align: right;
+}
+
 .download-location-panel {
   align-items: center;
   display: grid;

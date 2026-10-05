@@ -77,6 +77,8 @@ import kotlinx.coroutines.withContext
 internal fun PostDetailScreen(
     postId: Long,
     initialDetail: PostDetail?,
+    account: DanbooruAccount?,
+    customDownloadLocation: Boolean,
     onBack: () -> Unit,
     onTagClick: (SelectedTag) -> Unit,
     onDownloadQueued: (PostDetail, Long) -> Unit,
@@ -92,7 +94,7 @@ internal fun PostDetailScreen(
         if (detail != null && retry == 0) return@LaunchedEffect
         error = null
         try {
-            detail = withContext(Dispatchers.IO) { fetchPostDetail(postId) }
+            detail = withContext(Dispatchers.IO) { fetchPostDetail(postId, account) }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -102,7 +104,7 @@ internal fun PostDetailScreen(
 
     val startDownload: (PostDetail) -> Unit = { post ->
         try {
-            val downloadId = enqueueOriginalDownload(context, post)
+            val downloadId = enqueueOriginalDownload(context, post, notifyCompletion = !customDownloadLocation)
             onDownloadQueued(post, downloadId)
             Toast.makeText(context, R.string.download_started, Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
@@ -315,10 +317,12 @@ internal fun formatFileSize(bytes: Long): String = when {
     else -> "$bytes B"
 }
 
-internal fun enqueueOriginalDownload(context: Context, post: PostDetail): Long =
-    enqueueOriginalDownload(context, post.id, requireNotNull(post.fileUrl), post.fileExt)
+internal fun enqueueOriginalDownload(context: Context, post: PostDetail, notifyCompletion: Boolean = true): Long =
+    enqueueOriginalDownload(context, post.id, requireNotNull(post.fileUrl), post.fileExt, notifyCompletion)
 
-internal fun enqueueOriginalDownload(context: Context, id: Long, url: String, fileExt: String): Long {
+internal fun enqueueOriginalDownload(
+    context: Context, id: Long, url: String, fileExt: String, notifyCompletion: Boolean = true,
+): Long {
     val extension = fileExt.lowercase(Locale.ROOT).takeIf { it.matches(Regex("[a-z0-9]{1,8}")) }
         ?: Uri.parse(url).lastPathSegment?.substringAfterLast('.')
             ?.lowercase(Locale.ROOT)?.takeIf { it.matches(Regex("[a-z0-9]{1,8}")) }
@@ -326,7 +330,8 @@ internal fun enqueueOriginalDownload(context: Context, id: Long, url: String, fi
     val filename = "DanbooruDownloader-$id-${System.currentTimeMillis()}.$extension"
     val request = DownloadManager.Request(Uri.parse(url))
         .setTitle("Post #$id")
-        .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+        .setNotificationVisibility(if (notifyCompletion) DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED
+            else DownloadManager.Request.VISIBILITY_VISIBLE)
         .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, filename)
         .setMimeType(MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension) ?: "application/octet-stream")
     val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager

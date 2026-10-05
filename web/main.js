@@ -54,6 +54,10 @@ const chooseDownloadDirectoryButton = document.querySelector("#choose-download-d
 const openDownloadDirectoryButton = document.querySelector("#open-download-directory");
 const downloadSettingsStatus = document.querySelector("#download-settings-status");
 const clearDownloadHistoryButton = document.querySelector("#clear-download-history");
+const exportDownloadHistoryButton = document.querySelector("#export-download-history");
+const importDownloadHistoryButton = document.querySelector("#import-download-history");
+const downloadHistoryFileInput = document.querySelector("#download-history-file-input");
+const downloadHistoryStatus = document.querySelector("#download-history-status");
 const themeOptionButtons = [...document.querySelectorAll("[data-theme-option]")];
 const languageOptionButtons = [...document.querySelectorAll("[data-language-option]")];
 const loadingModeButtons = [...document.querySelectorAll("[data-loading-target][data-loading-mode]")];
@@ -1210,7 +1214,7 @@ function removeDownloadedRecord(postOrId, source = activeDownloadSource) {
 
 function clearDownloadedRecords() {
   if (downloadedRecords.length === 0) {
-    setAccountStatus(t("account.noDownloadRecords", "No downloaded records to clear."), "success");
+    if (downloadHistoryStatus) downloadHistoryStatus.textContent = t("account.noDownloadRecords", "No downloaded records to clear.");
     return;
   }
 
@@ -1226,7 +1230,52 @@ function clearDownloadedRecords() {
     renderDetail(activeDetailPost);
   }
   renderDownloadPage();
-  setAccountStatus(t("account.downloadRecordsCleared", "Downloaded records cleared."), "success");
+  if (downloadHistoryStatus) downloadHistoryStatus.textContent = t("account.downloadRecordsCleared", "Downloaded records cleared.");
+}
+
+function exportDownloadHistory() {
+  const payload = {
+    version: 1,
+    exported_at: new Date().toISOString(),
+    records: downloadedRecords,
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `danbooru-download-history-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  if (downloadHistoryStatus) downloadHistoryStatus.textContent = t("downloads.historyExported", "Download history exported.");
+}
+
+async function importDownloadHistory(file) {
+  if (!file) return;
+  try {
+    if (file.size > 4_000_000) throw new Error(t("downloads.historyTooLarge", "File is too large."));
+    const payload = JSON.parse(await file.text());
+    const items = Array.isArray(payload) ? payload : payload?.records;
+    if (!Array.isArray(items)) throw new Error(t("downloads.historyInvalid", "Invalid download history file."));
+    const imported = items.map(normalizeDownloadedRecord).filter(Boolean);
+    const existing = new Set(downloadedRecords.map((record) => getDownloadedRecordKey(record.id, record.source)));
+    const added = imported.filter((record) => {
+      const key = getDownloadedRecordKey(record.id, record.source);
+      if (existing.has(key)) return false;
+      existing.add(key);
+      return true;
+    });
+    downloadedRecords.push(...added);
+    saveDownloadedRecords();
+    added.forEach((record) => syncImageInstances(record.id, record.source));
+    renderDownloadPage();
+    if (downloadHistoryStatus) downloadHistoryStatus.textContent = t("downloads.historyImported", "{count} new records imported.", { count: added.length });
+  } catch (error) {
+    if (downloadHistoryStatus) downloadHistoryStatus.textContent = error.message;
+  } finally {
+    if (downloadHistoryFileInput) downloadHistoryFileInput.value = "";
+  }
 }
 
 function getDownloadTaskStatusLabel(status, item = {}) {
@@ -2411,6 +2460,9 @@ mergeGuestFavoritesButton?.addEventListener("click", () => {
 });
 
 clearDownloadHistoryButton?.addEventListener("click", clearDownloadedRecords);
+exportDownloadHistoryButton?.addEventListener("click", exportDownloadHistory);
+importDownloadHistoryButton?.addEventListener("click", () => downloadHistoryFileInput?.click());
+downloadHistoryFileInput?.addEventListener("change", () => importDownloadHistory(downloadHistoryFileInput.files?.[0]));
 chooseDownloadDirectoryButton?.addEventListener("click", chooseDownloadDirectory);
 openDownloadDirectoryButton?.addEventListener("click", openDownloadDirectory);
 

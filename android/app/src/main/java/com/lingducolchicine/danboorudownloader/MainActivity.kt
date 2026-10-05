@@ -6,6 +6,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
@@ -288,12 +289,41 @@ internal fun DownloaderApp(theme: String, onThemeChange: (String) -> Unit) {
     val favorites = remember(favoriteStore) {
         mutableStateListOf<FavoritePost>().apply { addAll(favoriteStore.load()) }
     }
+    val accountStore = remember(context) { AccountStore(context) }
+    val savedAccounts = remember(accountStore) { accountStore.load() }
+    val accounts = remember(accountStore) { mutableStateListOf<DanbooruAccount>().apply { addAll(savedAccounts.accounts) } }
+    var activeAccountId by remember(accountStore) { mutableStateOf(savedAccounts.activeId) }
+    val activeAccount = accounts.firstOrNull { it.id == activeAccountId }
+    val blacklistStore = remember(context) { BlacklistStore(context) }
+    val blacklistRules = remember(blacklistStore) {
+        mutableStateListOf<BlacklistRule>().apply { addAll(blacklistStore.load()) }
+    }
+    LaunchedEffect(blacklistRules.toList(), activeAccountId) {
+        if (blacklistRules.isNotEmpty()) {
+            favorites.filter { it.tags.isEmpty() }.forEach { favorite ->
+                val detail = try { withContext(Dispatchers.IO) { fetchPostDetail(favorite.id, activeAccount) } }
+                    catch (error: CancellationException) { throw error }
+                    catch (_: Exception) { return@forEach }
+                val index = favorites.indexOfFirst { it.id == favorite.id }
+                if (index >= 0) {
+                    favorites[index] = favorite.copy(tags = detail.artistTags + detail.characterTags +
+                        detail.copyrightTags + detail.generalTags + detail.metaTags)
+                    favoriteStore.save(favorites)
+                }
+            }
+        }
+    }
+    val locationStore = remember(context) { DownloadLocationStore(context) }
+    var downloadLocation by remember(locationStore) { mutableStateOf(locationStore.load()) }
     val downloadStore = remember(context) { DownloadStore(context) }
     val downloadRecords = remember(downloadStore) {
         mutableStateListOf<DownloadRecord>().apply { addAll(downloadStore.load()) }
     }
-    val registerDownload: (Long, String, Long) -> Unit = { postId, imageUrl, downloadId ->
-        downloadRecords.add(0, DownloadRecord(downloadId, postId, imageUrl))
+    val registerDownload: (Long, String, String, Long, Uri?) -> Unit = { postId, imageUrl, fileExt, downloadId, folder ->
+        downloadRecords.add(0, DownloadRecord(
+            downloadId, postId, imageUrl,
+            destinationTreeUri = folder?.toString(), fileExt = fileExt,
+        ))
         downloadStore.save(downloadRecords)
     }
     LaunchedEffect(downloadStore) {
@@ -304,7 +334,13 @@ internal fun DownloaderApp(theme: String, onThemeChange: (String) -> Unit) {
             if (active.isNotEmpty()) {
                 val updates = withContext(Dispatchers.IO) {
                     active.map { record ->
-                        runCatching { readDownloadRecord(context, record) ?: record.copy(status = DownloadManager.STATUS_FAILED) }
+                        runCatching {
+                            val current = readDownloadRecord(context, record)
+                                ?: record.copy(status = DownloadManager.STATUS_FAILED)
+                            if (current.status == DownloadManager.STATUS_SUCCESSFUL &&
+                                current.destinationTreeUri != null && !current.relocated && !current.locationError
+                            ) relocateDownload(context, current) else current
+                        }
                             .getOrDefault(record)
                     }
                 }
@@ -324,6 +360,12 @@ internal fun DownloaderApp(theme: String, onThemeChange: (String) -> Unit) {
                         it.status == DownloadManager.STATUS_SUCCESSFUL && !completedPostIds.add(it.postId)
                     }
                     downloadStore.save(downloadRecords)
+                    val relocatedIds = updates.filter { it.relocated && active.any { old -> old.downloadId == it.downloadId && !old.relocated } }
+                        .map { it.downloadId }
+                    if (relocatedIds.isNotEmpty()) withContext(Dispatchers.IO) {
+                        val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+                        relocatedIds.forEach { runCatching { manager.remove(it) } }
+                    }
                 }
             }
             delay(1000)
@@ -331,7 +373,7 @@ internal fun DownloaderApp(theme: String, onThemeChange: (String) -> Unit) {
     }
     val gridControls = remember { PostGridControls() }
     val feedScope = rememberCoroutineScope()
-    val latestPosts = remember(feedScope) { LatestPostsFeed(feedScope, ratedQuery(submittedQuery, ratingMask)) }
+    val latestPosts = remember(feedScope) { LatestPostsFeed(feedScope, ratedQuery(submittedQuery, ratingMask), activeAccount) }
     var feedGridState by remember { mutableStateOf(LazyStaggeredGridState()) }
     var selectedPostId by rememberSaveable { mutableStateOf<Long?>(null) }
     var displayedPostId by remember { mutableStateOf(selectedPostId) }
@@ -346,14 +388,18 @@ internal fun DownloaderApp(theme: String, onThemeChange: (String) -> Unit) {
             downloadInProgress = false
             Toast.makeText(context, R.string.original_unavailable, Toast.LENGTH_SHORT).show()
         } else feedScope.launch {
+            val destinationForBatch = downloadLocation
             val queued = withContext(Dispatchers.IO) {
                 available.mapNotNull { post ->
                     runCatching {
-                        post to enqueueOriginalDownload(context, post.id, requireNotNull(post.fileUrl), post.fileExt)
+                        post to enqueueOriginalDownload(context, post.id, requireNotNull(post.fileUrl), post.fileExt,
+                            notifyCompletion = destinationForBatch == null)
                     }.getOrNull()
                 }
             }
-            queued.forEach { (post, downloadId) -> registerDownload(post.id, post.imageUrl, downloadId) }
+            queued.forEach { (post, downloadId) ->
+                registerDownload(post.id, post.imageUrl, post.fileExt, downloadId, destinationForBatch)
+            }
             downloadInProgress = false
             Toast.makeText(
                 context,
@@ -445,6 +491,10 @@ internal fun DownloaderApp(theme: String, onThemeChange: (String) -> Unit) {
             submittedQuery = submittedQuery,
             ratingMask = ratingMask,
             favorites = favorites,
+            accounts = accounts,
+            activeAccountId = activeAccountId,
+            blacklistRules = blacklistRules,
+            downloadLocation = downloadLocation,
             downloadRecords = downloadRecords,
             gridControls = gridControls,
             downloadInProgress = downloadInProgress,
@@ -467,9 +517,64 @@ internal fun DownloaderApp(theme: String, onThemeChange: (String) -> Unit) {
                 }
             },
             onOpenPost = { selectedPostId = it },
+            onAddAccount = { account ->
+                accounts.add(account)
+                activeAccountId = account.id
+                accountStore.save(AccountSettings(accounts, activeAccountId))
+                latestPosts.search(latestPosts.query, account)
+                feedGridState = LazyStaggeredGridState()
+            },
+            onSelectAccount = { id ->
+                activeAccountId = id
+                accountStore.save(AccountSettings(accounts, id))
+                latestPosts.search(latestPosts.query, accounts.firstOrNull { it.id == id })
+                feedGridState = LazyStaggeredGridState()
+            },
+            onRemoveAccount = { id ->
+                accounts.removeAll { it.id == id }
+                if (activeAccountId == id) {
+                    activeAccountId = ""
+                    latestPosts.search(latestPosts.query, null)
+                    feedGridState = LazyStaggeredGridState()
+                }
+                accountStore.save(AccountSettings(accounts, activeAccountId))
+            },
+            onAddBlacklistRule = { rule ->
+                blacklistRules.add(rule)
+                blacklistStore.save(blacklistRules)
+                gridControls.endSelection()
+            },
+            onRemoveBlacklistRule = { id ->
+                blacklistRules.removeAll { it.id == id }
+                blacklistStore.save(blacklistRules)
+            },
+            onDownloadLocationChange = { uri ->
+                downloadLocation = uri
+                locationStore.save(uri)
+            },
+            onClearDownloadHistory = {
+                downloadRecords.removeAll { it.status == DownloadManager.STATUS_SUCCESSFUL }
+                downloadStore.save(downloadRecords)
+            },
+            onImportDownloadHistory = { postIds ->
+                val knownIds = downloadRecords.filter { it.status == DownloadManager.STATUS_SUCCESSFUL }
+                    .map { it.postId }.toSet()
+                val imported = postIds.filterNot { it in knownIds }.asReversed()
+                    .map { DownloadRecord(-it, it, "", status = DownloadManager.STATUS_SUCCESSFUL) }
+                downloadRecords.addAll(imported)
+                downloadStore.save(downloadRecords)
+                imported.size
+            },
             onDeleteDownload = { record ->
                 downloadRecords.removeAll { it.downloadId == record.downloadId }
                 downloadStore.save(downloadRecords)
+            },
+            onDownloadThumbnailLoaded = { downloadId, url ->
+                val index = downloadRecords.indexOfFirst { it.downloadId == downloadId }
+                if (index >= 0 && downloadRecords[index].imageUrl.isBlank()) {
+                    downloadRecords[index] = downloadRecords[index].copy(imageUrl = url)
+                    downloadStore.save(downloadRecords)
+                }
             },
             onDownloadSelected = { posts ->
                 if (!downloadInProgress && posts.isNotEmpty()) {
@@ -515,9 +620,11 @@ internal fun DownloaderApp(theme: String, onThemeChange: (String) -> Unit) {
             PostDetailScreen(
                 postId = displayedPostId!!,
                 initialDetail = initialDetail,
+                account = activeAccount,
+                customDownloadLocation = downloadLocation != null,
                 onBack = { selectedPostId = null },
                 onDownloadQueued = { post, downloadId ->
-                    registerDownload(post.id, post.previewUrl ?: "", downloadId)
+                    registerDownload(post.id, post.previewUrl ?: "", post.fileExt, downloadId, downloadLocation)
                 },
                 onTagClick = { tag ->
                     addSelectedTag(selectedTags, tag)
@@ -550,6 +657,10 @@ private fun MainScaffold(
     submittedQuery: String,
     ratingMask: Int,
     favorites: List<FavoritePost>,
+    accounts: List<DanbooruAccount>,
+    activeAccountId: String,
+    blacklistRules: List<BlacklistRule>,
+    downloadLocation: Uri?,
     downloadRecords: List<DownloadRecord>,
     gridControls: PostGridControls,
     downloadInProgress: Boolean,
@@ -560,7 +671,16 @@ private fun MainScaffold(
     onRefreshGrid: () -> Unit,
     onRatingChange: (Int) -> Unit,
     onOpenPost: (Long) -> Unit,
+    onAddAccount: (DanbooruAccount) -> Unit,
+    onSelectAccount: (String) -> Unit,
+    onRemoveAccount: (String) -> Unit,
+    onAddBlacklistRule: (BlacklistRule) -> Unit,
+    onRemoveBlacklistRule: (String) -> Unit,
+    onDownloadLocationChange: (Uri?) -> Unit,
+    onClearDownloadHistory: () -> Unit,
+    onImportDownloadHistory: (List<Long>) -> Int,
     onDeleteDownload: (DownloadRecord) -> Unit,
+    onDownloadThumbnailLoaded: (Long, String) -> Unit,
     onDownloadSelected: (List<FavoritePost>) -> Unit,
     onToggleFavorite: (FavoritePost) -> Unit,
     onSharePost: (FavoritePost) -> Unit,
@@ -584,8 +704,9 @@ private fun MainScaffold(
     }
     val selectedPosts = if (gridControls.selectionMode) when (page) {
         Page.Search -> latestPosts.pages.asSequence().flatMap { it.posts.asSequence() }
-            .filter { it.id in gridControls.selectedPostIds }.map { it.asFavoritePost() }.distinctBy { it.id }.toList()
-        Page.Favorites -> favorites.filter { it.id in gridControls.selectedPostIds }
+            .filter { it.id in gridControls.selectedPostIds && blacklistRules.none { rule -> rule.blocks(it.detail) } }
+            .map { it.asFavoritePost() }.distinctBy { it.id }.toList()
+        Page.Favorites -> favorites.filter { it.id in gridControls.selectedPostIds && blacklistRules.none { rule -> rule.blocks(it) } }
         else -> emptyList()
     } else emptyList()
     Scaffold(
@@ -674,6 +795,7 @@ private fun MainScaffold(
                     submittedQuery = submittedQuery,
                     ratingMask = ratingMask,
                     favorites = favorites,
+                    blacklistRules = blacklistRules,
                     gridControls = gridControls,
                     onSubmitSearch = onSubmitSearch,
                     onRatingChange = {
@@ -688,7 +810,11 @@ private fun MainScaffold(
                 )
             } else if (page == Page.Favorites) {
                 FavoritesPage(
-                    favorites = favorites,
+                    favorites = favorites.filterNot { post ->
+                        blacklistRules.isNotEmpty() && (post.tags.isEmpty() || blacklistRules.any { it.blocks(post) })
+                    },
+                    emptyBody = if (favorites.isNotEmpty() && blacklistRules.isNotEmpty())
+                        R.string.favorites_hidden_by_blacklist else R.string.favorites_empty_body,
                     gridControls = gridControls,
                     onOpenPost = onOpenPost,
                     onToggleFavorite = onToggleFavorite,
@@ -698,8 +824,10 @@ private fun MainScaffold(
             } else if (page == Page.Download) {
                 DownloadPage(
                     records = downloadRecords,
+                    account = accounts.firstOrNull { it.id == activeAccountId },
                     onOpenPost = onOpenPost,
                     onDelete = onDeleteDownload,
+                    onThumbnailLoaded = onDownloadThumbnailLoaded,
                     modifier = Modifier.widthIn(max = 600.dp).fillMaxSize(),
                 )
             } else {
@@ -713,7 +841,23 @@ private fun MainScaffold(
                         Page.Search -> Unit
                         Page.Favorites -> Unit
                         Page.Download -> Unit
-                        Page.Settings -> SettingsPage(theme, onThemeChange)
+                        Page.Settings -> SettingsPage(
+                            theme = theme,
+                            onThemeChange = onThemeChange,
+                            accounts = accounts,
+                            activeAccountId = activeAccountId,
+                            onAddAccount = onAddAccount,
+                            onSelectAccount = onSelectAccount,
+                            onRemoveAccount = onRemoveAccount,
+                            blacklistRules = blacklistRules,
+                            onAddBlacklistRule = onAddBlacklistRule,
+                            onRemoveBlacklistRule = onRemoveBlacklistRule,
+                            downloadLocation = downloadLocation,
+                            onDownloadLocationChange = onDownloadLocationChange,
+                            downloadRecords = downloadRecords,
+                            onClearDownloadHistory = onClearDownloadHistory,
+                            onImportDownloadHistory = onImportDownloadHistory,
+                        )
                     }
                 }
             }
@@ -732,6 +876,7 @@ private fun SearchPage(
     submittedQuery: String,
     ratingMask: Int,
     favorites: List<FavoritePost>,
+    blacklistRules: List<BlacklistRule>,
     gridControls: PostGridControls,
     onSubmitSearch: (String) -> Unit,
     onRatingChange: (Int) -> Unit,
@@ -826,7 +971,7 @@ private fun SearchPage(
             }
         }
         LatestPostsGrid(
-            feed, gridState, submittedQuery, ratingMask, favorites, gridControls,
+            feed, gridState, submittedQuery, ratingMask, favorites, blacklistRules, gridControls,
             onRatingChange, onOpenPost, onToggleFavorite, onSharePost,
             Modifier.weight(1f).testTag("feed-tags:$submittedQuery"),
         )
@@ -1133,6 +1278,7 @@ private fun LatestPostsGrid(
     submittedQuery: String,
     ratingMask: Int,
     favorites: List<FavoritePost>,
+    blacklistRules: List<BlacklistRule>,
     controls: PostGridControls,
     onRatingChange: (Int) -> Unit,
     onOpenPost: (Long) -> Unit,
@@ -1153,10 +1299,12 @@ private fun LatestPostsGrid(
             RatingFilter(ratingMask, onRatingChange)
         }
         feed.pages.forEach { page ->
+            val visiblePosts = page.posts.filterNot { post -> blacklistRules.any { it.blocks(post.detail) } }
+            if (visiblePosts.isEmpty()) return@forEach
             item(key = "page-${page.number}", span = StaggeredGridItemSpan.FullLine) {
                 PageHeader(page.number)
             }
-            page.posts.forEachIndexed { index, post ->
+            visiblePosts.forEachIndexed { index, post ->
                 val itemKey = "post-${page.number}-$index-${post.id}"
                 item(key = itemKey) {
                     PostGridCard(
@@ -1200,10 +1348,13 @@ private fun LatestPostsGrid(
                     CircularProgressIndicator(Modifier.size(24.dp))
                 }
             }
-        } else if (feed.pages.isEmpty()) {
+        } else if (feed.pages.isEmpty() || feed.pages.all { page ->
+                page.posts.all { post -> blacklistRules.any { it.blocks(post.detail) } }
+            }) {
             item(key = "empty", span = StaggeredGridItemSpan.FullLine) {
                 Text(
-                    stringResource(if (submittedQuery.isEmpty()) R.string.latest_empty else R.string.search_empty),
+                    stringResource(if (feed.pages.isNotEmpty()) R.string.posts_hidden_by_blacklist
+                        else if (submittedQuery.isEmpty()) R.string.latest_empty else R.string.search_empty),
                     modifier = Modifier.fillMaxWidth().padding(24.dp),
                     textAlign = TextAlign.Center,
                 )
@@ -1215,6 +1366,7 @@ private fun LatestPostsGrid(
 @Composable
 private fun FavoritesPage(
     favorites: List<FavoritePost>,
+    @StringRes emptyBody: Int = R.string.favorites_empty_body,
     gridControls: PostGridControls,
     onOpenPost: (Long) -> Unit,
     onToggleFavorite: (FavoritePost) -> Unit,
@@ -1223,7 +1375,7 @@ private fun FavoritesPage(
 ) {
     if (favorites.isEmpty()) {
         Column(modifier) {
-            EmptyState(R.drawable.ic_heart, R.string.favorites_empty_title, R.string.favorites_empty_body)
+            EmptyState(R.drawable.ic_heart, R.string.favorites_empty_title, emptyBody)
         }
         return
     }
@@ -1487,8 +1639,10 @@ private fun PageHeader(page: Int) {
 @Composable
 private fun DownloadPage(
     records: List<DownloadRecord>,
+    account: DanbooruAccount?,
     onOpenPost: (Long) -> Unit,
     onDelete: (DownloadRecord) -> Unit,
+    onThumbnailLoaded: (Long, String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val active = records.filter { it.status != DownloadManager.STATUS_SUCCESSFUL }
@@ -1503,7 +1657,7 @@ private fun DownloadPage(
                 )
             }
             items(active, key = { it.downloadId }) { record ->
-                DownloadRow(record, onOpenPost, onDelete)
+                DownloadRow(record, account, onOpenPost, onDelete, onThumbnailLoaded)
             }
         }
         item {
@@ -1524,7 +1678,7 @@ private fun DownloadPage(
             }
         } else {
             items(history, key = { it.downloadId }) { record ->
-                DownloadRow(record, onOpenPost, onDelete)
+                DownloadRow(record, account, onOpenPost, onDelete, onThumbnailLoaded)
             }
         }
     }
@@ -1533,11 +1687,23 @@ private fun DownloadPage(
 @Composable
 private fun DownloadRow(
     record: DownloadRecord,
+    account: DanbooruAccount?,
     onOpenPost: (Long) -> Unit,
     onDelete: (DownloadRecord) -> Unit,
+    onThumbnailLoaded: (Long, String) -> Unit,
 ) {
+    LaunchedEffect(record.downloadId, account) {
+        if (record.imageUrl.isBlank()) {
+            val preview = try { withContext(Dispatchers.IO) { fetchPostDetail(record.postId, account).previewUrl } }
+                catch (error: CancellationException) { throw error }
+                catch (_: Exception) { null }
+            if (!preview.isNullOrBlank()) onThumbnailLoaded(record.downloadId, preview)
+        }
+    }
     val status = when (record.status) {
-        DownloadManager.STATUS_SUCCESSFUL -> stringResource(R.string.download_status_complete)
+        DownloadManager.STATUS_SUCCESSFUL -> if (record.locationError) {
+            stringResource(R.string.download_location_fallback)
+        } else stringResource(R.string.download_status_complete)
         DownloadManager.STATUS_FAILED -> stringResource(R.string.download_status_failed)
         DownloadManager.STATUS_PAUSED -> stringResource(R.string.download_status_paused)
         DownloadManager.STATUS_RUNNING -> stringResource(R.string.download_status_downloading)
@@ -1589,64 +1755,6 @@ private fun DownloadRow(
         modifier = Modifier.fillMaxWidth().clickable { onOpenPost(record.postId) },
     )
     HorizontalDivider()
-}
-
-@Composable
-private fun SettingsPage(theme: String, onThemeChange: (String) -> Unit) {
-    Text(
-        stringResource(R.string.settings_appearance),
-        style = MaterialTheme.typography.titleSmall,
-        color = MaterialTheme.colorScheme.primary,
-    )
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(stringResource(R.string.settings_theme), style = MaterialTheme.typography.titleMedium)
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(
-                    "system" to R.string.theme_system,
-                    "light" to R.string.theme_light,
-                    "dark" to R.string.theme_dark,
-                ).forEach { (value, label) ->
-                    FilterChip(
-                        selected = theme == value,
-                        onClick = { onThemeChange(value) },
-                        label = { Text(stringResource(label)) },
-                    )
-                }
-            }
-            HorizontalDivider()
-            SettingRow(R.string.settings_language, R.string.language_english)
-        }
-    }
-    Text(
-        stringResource(R.string.settings_about),
-        style = MaterialTheme.typography.titleSmall,
-        color = MaterialTheme.colorScheme.primary,
-    )
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            SettingRow(R.string.settings_source, R.string.source_danbooru)
-            HorizontalDivider()
-            SettingRow(R.string.settings_version, R.string.version_value)
-        }
-    }
-    Text(
-        stringResource(R.string.settings_preview_note),
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-}
-
-@Composable
-private fun SettingRow(@StringRes label: Int, @StringRes value: Int) {
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(stringResource(label), style = MaterialTheme.typography.bodyLarge)
-        Text(
-            stringResource(value),
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
 }
 
 @Composable

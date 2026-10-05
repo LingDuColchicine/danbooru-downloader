@@ -10,9 +10,13 @@ internal data class FavoritePost(
     val aspectRatio: Float,
     val fileUrl: String?,
     val fileExt: String = "",
+    val tags: List<String> = emptyList(),
 )
 
-internal fun LatestPost.asFavoritePost() = FavoritePost(id, imageUrl, aspectRatio, detail.fileUrl, detail.fileExt)
+internal fun LatestPost.asFavoritePost() = FavoritePost(
+    id, imageUrl, aspectRatio, detail.fileUrl, detail.fileExt,
+    detail.artistTags + detail.characterTags + detail.copyrightTags + detail.generalTags + detail.metaTags,
+)
 
 internal class FavoriteStore(context: Context, preferenceName: String = "favorite_posts") {
     private val preferences = context.applicationContext.getSharedPreferences(preferenceName, Context.MODE_PRIVATE)
@@ -36,6 +40,12 @@ internal class FavoriteStore(context: Context, preferenceName: String = "favorit
                     aspectRatio,
                     item.optString("fileUrl").takeIf { it.startsWith("https://") },
                     item.optString("fileExt"),
+                    buildList {
+                        val tags = item.optJSONArray("tags")
+                        if (tags != null) for (tagIndex in 0 until tags.length()) {
+                            tags.optString(tagIndex).takeIf { it.isNotBlank() }?.let { add(it) }
+                        }
+                    },
                 ))
             }
         }.distinctBy { it.id }
@@ -49,7 +59,8 @@ internal class FavoriteStore(context: Context, preferenceName: String = "favorit
                 .put("imageUrl", post.imageUrl)
                 .put("aspectRatio", post.aspectRatio.toDouble())
                 .put("fileUrl", post.fileUrl)
-                .put("fileExt", post.fileExt))
+                .put("fileExt", post.fileExt)
+                .put("tags", JSONArray(post.tags)))
         }
         preferences.edit().putString("posts", saved.toString()).apply()
     }

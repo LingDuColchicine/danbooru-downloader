@@ -50,7 +50,11 @@
     "openFailed": "Failed to open image: {message}",
     "openFolder": "Open folder",
     "openFolderFailed": "Failed to open download folder.",
-    "openFolderFailedWithMessage": "Failed to open download folder: {message}"
+    "openFolderFailedWithMessage": "Failed to open download folder: {message}",
+    "historyExported": "Download history exported.",
+    "historyImported": "{count} new records imported.",
+    "historyInvalid": "Invalid download history file.",
+    "historyTooLarge": "File is too large."
   },
   "detail": {
     "title": "Image details",
@@ -120,7 +124,9 @@
     "loadingDirect": "Direct",
     "loadingProxy": "Proxy",
     "downloadHistory": "Download history",
-    "clearDownloaded": "Clear downloaded records"
+    "clearDownloaded": "Clear downloaded records",
+    "exportDownloadHistory": "Export history",
+    "importDownloadHistory": "Import history"
   },
   "network": {
     "desktopOnly": "Network routing is available in the desktop app.",

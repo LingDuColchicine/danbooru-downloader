@@ -50,7 +50,11 @@
     "openFailed": "打开图片失败：{message}",
     "openFolder": "打开文件夹",
     "openFolderFailed": "打开下载文件夹失败。",
-    "openFolderFailedWithMessage": "打开下载文件夹失败：{message}"
+    "openFolderFailedWithMessage": "打开下载文件夹失败：{message}",
+    "historyExported": "下载记录已导出。",
+    "historyImported": "已导入 {count} 条新记录。",
+    "historyInvalid": "下载记录文件无效。",
+    "historyTooLarge": "文件过大。"
   },
   "detail": {
     "title": "图片详情",
@@ -120,7 +124,9 @@
     "loadingDirect": "直连",
     "loadingProxy": "代理",
     "downloadHistory": "下载记录",
-    "clearDownloaded": "清空下载记录"
+    "clearDownloaded": "清空下载记录",
+    "exportDownloadHistory": "导出记录",
+    "importDownloadHistory": "导入记录"
   },
   "network": {
     "desktopOnly": "网络路由设置仅在桌面版中可用。",

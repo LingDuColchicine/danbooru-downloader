@@ -21,6 +21,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import okhttp3.Call
 import okhttp3.Callback
+import okhttp3.Credentials
 import okhttp3.Dns
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -79,7 +80,11 @@ internal data class PostDetail(
     val metaTags: List<String>,
 )
 
-internal class LatestPostsFeed(private val scope: CoroutineScope, initialQuery: String = "") {
+internal class LatestPostsFeed(
+    private val scope: CoroutineScope,
+    initialQuery: String = "",
+    private var account: DanbooruAccount? = null,
+) {
     val pages = mutableStateListOf<LatestPage>()
     var query by mutableStateOf(initialQuery)
         private set
@@ -94,9 +99,10 @@ internal class LatestPostsFeed(private val scope: CoroutineScope, initialQuery: 
     private var generation = 0
     private var loadJob: Job? = null
 
-    fun search(tags: String) {
+    fun search(tags: String, account: DanbooruAccount? = this.account) {
         generation++
         loadJob?.cancel()
+        this.account = account
         query = tags.trim()
         pages.clear()
         nextPage = 1
@@ -111,11 +117,12 @@ internal class LatestPostsFeed(private val scope: CoroutineScope, initialQuery: 
         val requestGeneration = generation
         val pageNumber = nextPage
         val requestedTags = query
+        val requestedAccount = account
         isLoading = true
         error = null
         loadJob = scope.launch {
             try {
-                val result = withContext(Dispatchers.IO) { fetchPostsPage(pageNumber, requestedTags) }
+                val result = withContext(Dispatchers.IO) { fetchPostsPage(pageNumber, requestedTags, requestedAccount) }
                 if (requestGeneration != generation) return@launch
                 if (result.totalCount > 0) pages.add(LatestPage(pageNumber, result.posts))
                 hasMore = result.totalCount == POSTS_PER_PAGE
@@ -136,17 +143,17 @@ internal class LatestPostsFeed(private val scope: CoroutineScope, initialQuery: 
 
 private data class PageResponse(val totalCount: Int, val posts: List<LatestPost>)
 
-private suspend fun fetchPostsPage(page: Int, tags: String): PageResponse {
+private suspend fun fetchPostsPage(page: Int, tags: String, account: DanbooruAccount?): PageResponse {
     val address = Uri.parse("https://danbooru.donmai.us/posts.json").buildUpon()
         .appendQueryParameter("limit", POSTS_PER_PAGE.toString())
         .appendQueryParameter("page", page.toString())
         .apply { if (tags.isNotEmpty()) appendQueryParameter("tags", tags) }
         .build()
-    return parsePostsPage(fetchDanbooruJson(danbooruRequest(address.toString())))
+    return parsePostsPage(fetchDanbooruJson(danbooruRequest(address.toString(), account)))
 }
 
-internal suspend fun fetchPostDetail(id: Long): PostDetail {
-    val body = fetchDanbooruJson(danbooruRequest("https://danbooru.donmai.us/posts/$id.json"))
+internal suspend fun fetchPostDetail(id: Long, account: DanbooruAccount? = null): PostDetail {
+    val body = fetchDanbooruJson(danbooruRequest("https://danbooru.donmai.us/posts/$id.json", account))
     return parsePostDetail(id, body)
 }
 
@@ -182,13 +189,14 @@ private fun JSONObject.httpsUrl(key: String): String? = optString(key).takeIf { 
 private fun JSONObject.tags(key: String): List<String> = optString(key).split(Regex("\\s+"))
     .filter { it.isNotBlank() }
 
-private fun danbooruRequest(url: String): Request = Request.Builder()
+private fun danbooruRequest(url: String, account: DanbooruAccount? = null): Request = Request.Builder()
     .url(url)
     .header("Accept", "application/json")
     .header("User-Agent", "DanbooruDownloader/0.1.0 (Android; github.com/LingDuColchicine/danbooru-downloader)")
+    .apply { if (account != null) header("Authorization", Credentials.basic(account.username, account.apiKey)) }
     .build()
 
-private suspend fun fetchDanbooruJson(request: Request): String {
+internal suspend fun fetchDanbooruJson(request: Request): String {
     var lastNetworkError: IOException? = null
     for (client in sequence {
         yield(directPostsClient)

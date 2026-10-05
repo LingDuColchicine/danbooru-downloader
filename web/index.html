@@ -314,10 +314,16 @@
                 <div>
                   <h2 data-i18n="settings.downloadHistory">Download history</h2>
                 </div>
-                <button class="danger-action-button" id="clear-download-history" type="button">
-                  <span class="action-icon icon-x" aria-hidden="true"></span>
-                  <span data-i18n="settings.clearDownloaded">Clear downloaded records</span>
-                </button>
+                <div class="download-history-actions">
+                  <button class="text-icon-button" id="export-download-history" type="button" data-i18n="settings.exportDownloadHistory">Export history</button>
+                  <button class="text-icon-button" id="import-download-history" type="button" data-i18n="settings.importDownloadHistory">Import history</button>
+                  <button class="danger-action-button" id="clear-download-history" type="button">
+                    <span class="action-icon icon-x" aria-hidden="true"></span>
+                    <span data-i18n="settings.clearDownloaded">Clear downloaded records</span>
+                  </button>
+                  <input id="download-history-file-input" type="file" accept=".json,application/json" hidden>
+                  <p class="download-settings-status" id="download-history-status" aria-live="polite"></p>
+                </div>
               </div>
             </section>
           </div>
