@@ -13,6 +13,7 @@
     <string name="search_history">Search history</string>
     <string name="search_history_entry">Search history: %1$s</string>
     <string name="remove_search_history">Remove history: %1$s</string>
+    <string name="search_history_remove_confirm">Remove %1$s from search history?</string>
     <string name="no_matching_tags">No matching tags</string>
     <string name="autocomplete_error">Unable to load tag suggestions: %1$s</string>
     <string name="tag_suggestion_details">%1$s · %2$s posts</string>
@@ -48,6 +49,12 @@
     <string name="post_format">Format</string>
     <string name="post_size">Size</string>
     <string name="add_detail_tag_to_search">Add %1$s to search</string>
+    <string name="block_tag_long_press">Block %1$s</string>
+    <string name="block_tag_title">Block tag?</string>
+    <string name="block_tag_confirm">Add %1$s to Block List? Posts with this tag will be hidden from Search and Favorites.</string>
+    <string name="block_tag_action">Block</string>
+    <string name="block_tag_added">Tag added to Block List.</string>
+    <string name="block_tag_already_added">This tag is already blocked.</string>
     <string name="latest_load_error">Unable to load posts: %1$s</string>
     <string name="latest_empty">No posts available.</string>
     <string name="search_empty">No matching posts.</string>
@@ -58,6 +65,7 @@
     <string name="favorites_hidden_by_blacklist">Favorites are hidden by Block List rules or cannot be checked yet.</string>
     <string name="add_favorite">Add to favorites</string>
     <string name="remove_favorite">Remove from favorites</string>
+    <string name="favorite_remove_confirm">Remove post #%1$d from favorites?</string>
     <string name="copy_original_link">Copy original image link</string>
     <string name="original_link_copied">Original image link copied</string>
     <string name="select_post">Select post %1$d</string>
@@ -80,7 +88,14 @@
     <string name="download_status_failed">Failed</string>
     <string name="download_location_fallback">Saved in Downloads; selected folder unavailable</string>
     <string name="remove_download_record">Remove download record for post %1$d</string>
+    <string name="download_record_remove_confirm">Remove post #%1$d from the download list? Downloaded files will remain on your device.</string>
     <string name="settings_appearance">Appearance</string>
+    <string name="settings_confirmation">Confirmations</string>
+    <string name="settings_confirm_deletions">Confirm removals</string>
+    <string name="settings_confirm_deletions_help">Ask before removing favorites, search or download history, accounts, and Block List rules.</string>
+    <string name="confirm_deletion_title">Confirm removal</string>
+    <string name="confirm_deletion_remove">Remove</string>
+    <string name="confirm_deletion_dont_ask_again">Don’t ask again</string>
     <string name="settings_account_login">Account login</string>
     <string name="settings_username">Username</string>
     <string name="settings_api_key">API key</string>
@@ -103,6 +118,7 @@
     <string name="blacklist_duplicate">This rule already exists.</string>
     <string name="blacklist_added">Rule added.</string>
     <string name="blacklist_remove">Remove rule: %1$s</string>
+    <string name="blacklist_remove_confirm">Remove this Block List rule: %1$s?</string>
     <string name="settings_download_location">Download location</string>
     <string name="download_location_default">Downloads (default)</string>
     <string name="download_location_choose">Choose folder</string>

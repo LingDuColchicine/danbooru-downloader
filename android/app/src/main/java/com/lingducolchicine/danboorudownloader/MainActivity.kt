@@ -146,6 +146,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import java.text.NumberFormat
+import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -206,6 +207,14 @@ private enum class Rating(val code: String, @get:StringRes val label: Int, val b
 
 private const val ALL_RATINGS_MASK = 15
 private const val RATING_MASK_KEY = "rating_mask"
+private const val CONFIRM_DELETIONS_KEY = "confirm_deletions"
+
+private data class DeletionRequest(
+    val title: String,
+    val message: String,
+    val buttonLabel: String,
+    val delete: () -> Unit,
+)
 
 internal fun ratedQuery(tags: String, ratingMask: Int): String {
     val selected = Rating.entries.filter { ratingMask and it.bit != 0 }.ifEmpty { listOf(Rating.General) }
@@ -273,6 +282,20 @@ internal fun DownloaderApp(theme: String, onThemeChange: (String) -> Unit) {
     val selectedTags = rememberSaveable(saver = selectedTagsSaver) { mutableStateListOf<SelectedTag>() }
     var submittedQuery by rememberSaveable { mutableStateOf("") }
     val context = LocalContext.current
+    val deletionPreferences = remember(context) {
+        context.getSharedPreferences("deletion_confirmation", Context.MODE_PRIVATE)
+    }
+    var confirmDeletions by remember(deletionPreferences) {
+        mutableStateOf(deletionPreferences.getBoolean(CONFIRM_DELETIONS_KEY, true))
+    }
+    var pendingDeletion by remember { mutableStateOf<DeletionRequest?>(null) }
+    var skipFutureConfirmations by remember { mutableStateOf(false) }
+    val requestDeletion: (String, String, String, () -> Unit) -> Unit = { title, message, buttonLabel, delete ->
+        if (confirmDeletions) {
+            skipFutureConfirmations = false
+            pendingDeletion = DeletionRequest(title, message, buttonLabel, delete)
+        } else delete()
+    }
     val ratingPreferences = remember(context) { context.getSharedPreferences("search", Context.MODE_PRIVATE) }
     var ratingMask by rememberSaveable {
         mutableIntStateOf(
@@ -500,6 +523,11 @@ internal fun DownloaderApp(theme: String, onThemeChange: (String) -> Unit) {
             downloadInProgress = downloadInProgress,
             theme = theme,
             onThemeChange = onThemeChange,
+            confirmDeletions = confirmDeletions,
+            onConfirmDeletionsChange = { enabled ->
+                confirmDeletions = enabled
+                deletionPreferences.edit().putBoolean(CONFIRM_DELETIONS_KEY, enabled).apply()
+            },
             onSelectPage = {
                 gridControls.endSelection()
                 selectedPage = it.name
@@ -531,13 +559,20 @@ internal fun DownloaderApp(theme: String, onThemeChange: (String) -> Unit) {
                 feedGridState = LazyStaggeredGridState()
             },
             onRemoveAccount = { id ->
-                accounts.removeAll { it.id == id }
-                if (activeAccountId == id) {
-                    activeAccountId = ""
-                    latestPosts.search(latestPosts.query, null)
-                    feedGridState = LazyStaggeredGridState()
+                val account = accounts.firstOrNull { it.id == id }
+                if (account != null) requestDeletion(
+                    context.getString(R.string.account_remove_title),
+                    context.getString(R.string.account_remove_confirm, account.username),
+                    context.getString(R.string.account_remove),
+                ) {
+                    accounts.removeAll { it.id == id }
+                    if (activeAccountId == id) {
+                        activeAccountId = ""
+                        latestPosts.search(latestPosts.query, null)
+                        feedGridState = LazyStaggeredGridState()
+                    }
+                    accountStore.save(AccountSettings(accounts, activeAccountId))
                 }
-                accountStore.save(AccountSettings(accounts, activeAccountId))
             },
             onAddBlacklistRule = { rule ->
                 blacklistRules.add(rule)
@@ -545,16 +580,30 @@ internal fun DownloaderApp(theme: String, onThemeChange: (String) -> Unit) {
                 gridControls.endSelection()
             },
             onRemoveBlacklistRule = { id ->
-                blacklistRules.removeAll { it.id == id }
-                blacklistStore.save(blacklistRules)
+                val rule = blacklistRules.firstOrNull { it.id == id }
+                if (rule != null) requestDeletion(
+                    context.getString(R.string.confirm_deletion_title),
+                    context.getString(R.string.blacklist_remove_confirm, rule.tags.joinToString(" + ") { it.label }),
+                    context.getString(R.string.confirm_deletion_remove),
+                ) {
+                    blacklistRules.removeAll { it.id == id }
+                    blacklistStore.save(blacklistRules)
+                }
             },
             onDownloadLocationChange = { uri ->
                 downloadLocation = uri
                 locationStore.save(uri)
             },
             onClearDownloadHistory = {
-                downloadRecords.removeAll { it.status == DownloadManager.STATUS_SUCCESSFUL }
-                downloadStore.save(downloadRecords)
+                requestDeletion(
+                    context.getString(R.string.download_history_clear),
+                    context.getString(R.string.download_history_clear_confirm),
+                    context.getString(R.string.download_history_clear),
+                ) {
+                    downloadRecords.removeAll { it.status == DownloadManager.STATUS_SUCCESSFUL }
+                    downloadStore.save(downloadRecords)
+                    Toast.makeText(context, R.string.download_history_cleared, Toast.LENGTH_SHORT).show()
+                }
             },
             onImportDownloadHistory = { postIds ->
                 val knownIds = downloadRecords.filter { it.status == DownloadManager.STATUS_SUCCESSFUL }
@@ -566,8 +615,14 @@ internal fun DownloaderApp(theme: String, onThemeChange: (String) -> Unit) {
                 imported.size
             },
             onDeleteDownload = { record ->
-                downloadRecords.removeAll { it.downloadId == record.downloadId }
-                downloadStore.save(downloadRecords)
+                requestDeletion(
+                    context.getString(R.string.confirm_deletion_title),
+                    context.getString(R.string.download_record_remove_confirm, record.postId),
+                    context.getString(R.string.confirm_deletion_remove),
+                ) {
+                    downloadRecords.removeAll { it.downloadId == record.downloadId }
+                    downloadStore.save(downloadRecords)
+                }
             },
             onDownloadThumbnailLoaded = { downloadId, url ->
                 val index = downloadRecords.indexOfFirst { it.downloadId == downloadId }
@@ -590,8 +645,17 @@ internal fun DownloaderApp(theme: String, onThemeChange: (String) -> Unit) {
             },
             onToggleFavorite = { post ->
                 val existing = favorites.indexOfFirst { it.id == post.id }
-                if (existing >= 0) favorites.removeAt(existing) else favorites.add(0, post)
-                favoriteStore.save(favorites)
+                if (existing >= 0) requestDeletion(
+                    context.getString(R.string.confirm_deletion_title),
+                    context.getString(R.string.favorite_remove_confirm, post.id),
+                    context.getString(R.string.confirm_deletion_remove),
+                ) {
+                    favorites.removeAll { it.id == post.id }
+                    favoriteStore.save(favorites)
+                } else {
+                    favorites.add(0, post)
+                    favoriteStore.save(favorites)
+                }
             },
             onSharePost = { post ->
                 post.fileUrl?.let { url ->
@@ -601,8 +665,14 @@ internal fun DownloaderApp(theme: String, onThemeChange: (String) -> Unit) {
                 }
             },
             onDeleteHistory = { entry ->
-                searchHistory.removeAll { it.tag.value.equals(entry.tag.value, ignoreCase = true) }
-                historyStore.save(searchHistory)
+                requestDeletion(
+                    context.getString(R.string.confirm_deletion_title),
+                    context.getString(R.string.search_history_remove_confirm, entry.tag.label),
+                    context.getString(R.string.confirm_deletion_remove),
+                ) {
+                    searchHistory.removeAll { it.tag.value.equals(entry.tag.value, ignoreCase = true) }
+                    historyStore.save(searchHistory)
+                }
             },
             modifier = if (displayedPostId != null) Modifier.clearAndSetSemantics {} else Modifier,
         )
@@ -633,6 +703,18 @@ internal fun DownloaderApp(theme: String, onThemeChange: (String) -> Unit) {
                     selectedPage = Page.Search.name
                     submitSearch(selectedTags.joinToString(" ") { it.value })
                 },
+                onBlockTag = { tag ->
+                    val alreadyBlocked = blacklistRules.any { rule ->
+                        rule.tags.size == 1 && rule.tags[0].value == tag.value
+                    }
+                    if (alreadyBlocked) {
+                        Toast.makeText(context, R.string.block_tag_already_added, Toast.LENGTH_SHORT).show()
+                    } else {
+                        blacklistRules.add(BlacklistRule(UUID.randomUUID().toString(), listOf(tag)))
+                        blacklistStore.save(blacklistRules)
+                        Toast.makeText(context, R.string.block_tag_added, Toast.LENGTH_SHORT).show()
+                    }
+                },
                 modifier = Modifier.fillMaxSize().graphicsLayer {
                     scaleX = 0.9f + detailVisibility * 0.1f
                     scaleY = 0.9f + detailVisibility * 0.1f
@@ -640,6 +722,39 @@ internal fun DownloaderApp(theme: String, onThemeChange: (String) -> Unit) {
                     shape = RoundedCornerShape(28.dp * (1f - detailVisibility))
                     clip = true
                 },
+            )
+        }
+        pendingDeletion?.let { request ->
+            AlertDialog(
+                onDismissRequest = { pendingDeletion = null },
+                title = { Text(request.title) },
+                text = {
+                    Column {
+                        Text(request.message)
+                        Row(
+                            Modifier.fillMaxWidth().toggleable(
+                                value = skipFutureConfirmations,
+                                role = Role.Checkbox,
+                                onValueChange = { skipFutureConfirmations = it },
+                            ),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Checkbox(checked = skipFutureConfirmations, onCheckedChange = null)
+                            Text(stringResource(R.string.confirm_deletion_dont_ask_again))
+                        }
+                    }
+                },
+                confirmButton = { TextButton(onClick = {
+                    pendingDeletion = null
+                    if (skipFutureConfirmations) {
+                        confirmDeletions = false
+                        deletionPreferences.edit().putBoolean(CONFIRM_DELETIONS_KEY, false).apply()
+                    }
+                    request.delete()
+                }) { Text(request.buttonLabel) } },
+                dismissButton = { TextButton(onClick = { pendingDeletion = null }) {
+                    Text(stringResource(R.string.cancel_selection))
+                } },
             )
         }
     }
@@ -666,6 +781,8 @@ private fun MainScaffold(
     downloadInProgress: Boolean,
     theme: String,
     onThemeChange: (String) -> Unit,
+    confirmDeletions: Boolean,
+    onConfirmDeletionsChange: (Boolean) -> Unit,
     onSelectPage: (Page) -> Unit,
     onSubmitSearch: (String) -> Unit,
     onRefreshGrid: () -> Unit,
@@ -844,6 +961,8 @@ private fun MainScaffold(
                         Page.Settings -> SettingsPage(
                             theme = theme,
                             onThemeChange = onThemeChange,
+                            confirmDeletions = confirmDeletions,
+                            onConfirmDeletionsChange = onConfirmDeletionsChange,
                             accounts = accounts,
                             activeAccountId = activeAccountId,
                             onAddAccount = onAddAccount,

@@ -55,6 +55,7 @@ const openDownloadDirectoryButton = document.querySelector("#open-download-direc
 const downloadSettingsStatus = document.querySelector("#download-settings-status");
 const clearDownloadHistoryButton = document.querySelector("#clear-download-history");
 const exportDownloadHistoryButton = document.querySelector("#export-download-history");
+const exportDownloadHistoryPageButton = document.querySelector("#export-download-history-page");
 const importDownloadHistoryButton = document.querySelector("#import-download-history");
 const downloadHistoryFileInput = document.querySelector("#download-history-file-input");
 const downloadHistoryStatus = document.querySelector("#download-history-status");
@@ -1248,7 +1249,9 @@ function exportDownloadHistory() {
   link.click();
   link.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-  if (downloadHistoryStatus) downloadHistoryStatus.textContent = t("downloads.historyExported", "Download history exported.");
+  const message = t("downloads.historyExported", "Download history exported.");
+  if (downloadHistoryStatus) downloadHistoryStatus.textContent = message;
+  showToast(message);
 }
 
 async function importDownloadHistory(file) {
@@ -2461,6 +2464,7 @@ mergeGuestFavoritesButton?.addEventListener("click", () => {
 
 clearDownloadHistoryButton?.addEventListener("click", clearDownloadedRecords);
 exportDownloadHistoryButton?.addEventListener("click", exportDownloadHistory);
+exportDownloadHistoryPageButton?.addEventListener("click", exportDownloadHistory);
 importDownloadHistoryButton?.addEventListener("click", () => downloadHistoryFileInput?.click());
 downloadHistoryFileInput?.addEventListener("change", () => importDownloadHistory(downloadHistoryFileInput.files?.[0]));
 chooseDownloadDirectoryButton?.addEventListener("click", chooseDownloadDirectory);

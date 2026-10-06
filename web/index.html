@@ -138,10 +138,16 @@
           <div class="search-workspace">
             <div class="search-header">
               <h1 data-i18n="downloads.title">Download</h1>
-              <button class="text-icon-button download-folder-button" id="open-download-directory" type="button">
-                <span class="action-icon icon-download" aria-hidden="true"></span>
-                <span data-i18n="downloads.openFolder">Open folder</span>
-              </button>
+              <div class="header-actions">
+                <button class="text-icon-button" id="export-download-history-page" type="button">
+                  <span class="action-icon icon-download" aria-hidden="true"></span>
+                  <span data-i18n="settings.exportDownloadHistory">Export history</span>
+                </button>
+                <button class="text-icon-button download-folder-button" id="open-download-directory" type="button">
+                  <span class="action-icon icon-download" aria-hidden="true"></span>
+                  <span data-i18n="downloads.openFolder">Open folder</span>
+                </button>
+              </div>
             </div>
 
             <section class="downloads-layout" aria-label="Download progress">

@@ -15,6 +15,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -29,9 +30,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -40,6 +41,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -81,12 +83,14 @@ internal fun PostDetailScreen(
     customDownloadLocation: Boolean,
     onBack: () -> Unit,
     onTagClick: (SelectedTag) -> Unit,
+    onBlockTag: (SelectedTag) -> Unit,
     onDownloadQueued: (PostDetail, Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var detail by remember(postId) { mutableStateOf(initialDetail) }
     var error by remember(postId) { mutableStateOf<String?>(null) }
     var retry by remember(postId) { mutableIntStateOf(0) }
+    var tagToBlock by remember(postId) { mutableStateOf<SelectedTag?>(null) }
     val context = LocalContext.current
     val resources = LocalResources.current
 
@@ -159,9 +163,24 @@ internal fun PostDetailScreen(
                         } else startDownload(post)
                     },
                     onTagClick = onTagClick,
+                    onTagLongClick = { tagToBlock = it },
                 )
             }
         }
+    }
+    tagToBlock?.let { tag ->
+        AlertDialog(
+            onDismissRequest = { tagToBlock = null },
+            title = { Text(stringResource(R.string.block_tag_title)) },
+            text = { Text(stringResource(R.string.block_tag_confirm, tag.label)) },
+            confirmButton = { TextButton(onClick = {
+                tagToBlock = null
+                onBlockTag(tag)
+            }) { Text(stringResource(R.string.block_tag_action)) } },
+            dismissButton = { TextButton(onClick = { tagToBlock = null }) {
+                Text(stringResource(R.string.cancel_selection))
+            } },
+        )
     }
 }
 
@@ -170,6 +189,7 @@ private fun PostDetailContent(
     post: PostDetail,
     onDownload: (PostDetail) -> Unit,
     onTagClick: (SelectedTag) -> Unit,
+    onTagLongClick: (SelectedTag) -> Unit,
 ) {
     val uriHandler = LocalUriHandler.current
     Column(
@@ -259,11 +279,11 @@ private fun PostDetailContent(
         }
 
         HorizontalDivider()
-        DetailTagSection(R.string.tag_category_artist, post.artistTags, 1, onTagClick)
-        DetailTagSection(R.string.tag_category_character, post.characterTags, 4, onTagClick)
-        DetailTagSection(R.string.tag_category_copyright, post.copyrightTags, 3, onTagClick)
-        DetailTagSection(R.string.tag_category_general, post.generalTags, 0, onTagClick)
-        DetailTagSection(R.string.tag_category_meta, post.metaTags, 5, onTagClick)
+        DetailTagSection(R.string.tag_category_artist, post.artistTags, 1, onTagClick, onTagLongClick)
+        DetailTagSection(R.string.tag_category_character, post.characterTags, 4, onTagClick, onTagLongClick)
+        DetailTagSection(R.string.tag_category_copyright, post.copyrightTags, 3, onTagClick, onTagLongClick)
+        DetailTagSection(R.string.tag_category_general, post.generalTags, 0, onTagClick, onTagLongClick)
+        DetailTagSection(R.string.tag_category_meta, post.metaTags, 5, onTagClick, onTagLongClick)
     }
 }
 
@@ -286,6 +306,7 @@ private fun DetailTagSection(
     tags: List<String>,
     category: Int,
     onTagClick: (SelectedTag) -> Unit,
+    onTagLongClick: (SelectedTag) -> Unit,
 ) {
     if (tags.isEmpty()) return
     val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
@@ -298,13 +319,23 @@ private fun DetailTagSection(
         ) {
             tags.forEach { tag ->
                 val description = stringResource(R.string.add_detail_tag_to_search, tag)
-                AssistChip(
-                    onClick = { onTagClick(SelectedTag(tag, tag, category)) },
-                    label = { Text(tag, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                    modifier = Modifier.semantics { contentDescription = description },
-                    colors = AssistChipDefaults.assistChipColors(containerColor = container, labelColor = content),
-                    border = null,
-                )
+                val blockDescription = stringResource(R.string.block_tag_long_press, tag)
+                val selectedTag = SelectedTag(tag, tag, category)
+                Surface(
+                    modifier = Modifier.combinedClickable(
+                        onClickLabel = description,
+                        onLongClickLabel = blockDescription,
+                        onClick = { onTagClick(selectedTag) },
+                        onLongClick = { onTagLongClick(selectedTag) },
+                    ),
+                    shape = RoundedCornerShape(8.dp),
+                    color = container,
+                    contentColor = content,
+                ) {
+                    Text(tag, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        style = MaterialTheme.typography.labelLarge,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
             }
         }
     }

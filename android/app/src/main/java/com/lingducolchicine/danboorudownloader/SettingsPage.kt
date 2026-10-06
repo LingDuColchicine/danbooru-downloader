@@ -9,6 +9,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
@@ -18,9 +19,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -46,6 +47,7 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
@@ -64,6 +66,8 @@ import kotlinx.coroutines.withContext
 internal fun SettingsPage(
     theme: String,
     onThemeChange: (String) -> Unit,
+    confirmDeletions: Boolean,
+    onConfirmDeletionsChange: (Boolean) -> Unit,
     accounts: List<DanbooruAccount>,
     activeAccountId: String,
     onAddAccount: (DanbooruAccount) -> Unit,
@@ -84,14 +88,12 @@ internal fun SettingsPage(
     var apiKey by remember { mutableStateOf("") }
     var accountBusy by remember { mutableStateOf(false) }
     var accountMessage by remember { mutableStateOf("") }
-    var removeAccountId by remember { mutableStateOf<String?>(null) }
     var blacklistInput by rememberSaveable { mutableStateOf("") }
     val blacklistDraft = remember { mutableStateListOf<SelectedTag>() }
     var suggestions by remember { mutableStateOf<List<TagSuggestion>>(emptyList()) }
     var blacklistMessage by remember { mutableStateOf("") }
     var locationMessage by remember { mutableStateOf("") }
     var historyMessage by remember { mutableStateOf("") }
-    var confirmClearHistory by remember { mutableStateOf(false) }
 
     val chooseFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) {
@@ -170,6 +172,26 @@ internal fun SettingsPage(
         }
     }
 
+    SectionTitle(R.string.settings_confirmation)
+    Card(Modifier.fillMaxWidth()) {
+        Row(
+            Modifier.fillMaxWidth().toggleable(
+                value = confirmDeletions,
+                role = Role.Checkbox,
+                onValueChange = onConfirmDeletionsChange,
+            ).padding(20.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(stringResource(R.string.settings_confirm_deletions), style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.settings_confirm_deletions_help),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Checkbox(checked = confirmDeletions, onCheckedChange = null)
+        }
+    }
+
     SectionTitle(R.string.settings_account_login)
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -206,7 +228,7 @@ internal fun SettingsPage(
                 onSelect = { onSelectAccount("") })
             accounts.forEach { account ->
                 AccountRow(account.username, activeAccountId == account.id,
-                    onSelect = { onSelectAccount(account.id) }, onRemove = { removeAccountId = account.id })
+                    onSelect = { onSelectAccount(account.id) }, onRemove = { onRemoveAccount(account.id) })
             }
         }
     }
@@ -308,7 +330,7 @@ internal fun SettingsPage(
                     Text(stringResource(R.string.download_history_import))
                 }
             }
-            TextButton(enabled = count > 0, onClick = { confirmClearHistory = true }) {
+            TextButton(enabled = count > 0, onClick = onClearDownloadHistory) {
                 Text(stringResource(R.string.download_history_clear), color = MaterialTheme.colorScheme.error)
             }
             if (historyMessage.isNotBlank()) Text(historyMessage, style = MaterialTheme.typography.bodySmall)
@@ -324,30 +346,6 @@ internal fun SettingsPage(
         }
     }
 
-    removeAccountId?.let { id ->
-        val account = accounts.firstOrNull { it.id == id }
-        AlertDialog(onDismissRequest = { removeAccountId = null },
-            title = { Text(stringResource(R.string.account_remove_title)) },
-            text = { Text(stringResource(R.string.account_remove_confirm, account?.username ?: "")) },
-            confirmButton = { TextButton(onClick = {
-                onRemoveAccount(id)
-                removeAccountId = null
-            }) { Text(stringResource(R.string.account_remove)) } },
-            dismissButton = { TextButton(onClick = { removeAccountId = null }) {
-                Text(stringResource(R.string.cancel_selection))
-            } })
-    }
-    if (confirmClearHistory) AlertDialog(onDismissRequest = { confirmClearHistory = false },
-        title = { Text(stringResource(R.string.download_history_clear)) },
-        text = { Text(stringResource(R.string.download_history_clear_confirm)) },
-        confirmButton = { TextButton(onClick = {
-            onClearDownloadHistory()
-            confirmClearHistory = false
-            historyMessage = context.getString(R.string.download_history_cleared)
-        }) { Text(stringResource(R.string.download_history_clear)) } },
-        dismissButton = { TextButton(onClick = { confirmClearHistory = false }) {
-            Text(stringResource(R.string.cancel_selection))
-        } })
 }
 
 @Composable
